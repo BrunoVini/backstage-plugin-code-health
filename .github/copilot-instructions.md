@@ -184,10 +184,11 @@ New files behind the trends, ownership and administration work:
   backend declare on `-common`, and that string is a resolution descriptor in the lockfile, so every
   CI job's `yarn install --immutable` answers `YN0028` until the lockfile is regenerated. The fix is
   `refresh: true` under `languages.typescript` in **this repository's** `.autobump.yaml`, beside the
-  pattern that causes the staleness. That needs an AutoBump carrying `rios0rios0/autobump#348`;
-  until one is released (3.0.2 is the latest, and predates it) a project file's `refresh: true` is
-  warned about and dropped, so the releaser **also** needs it in their own `~/.autobump.yaml` as an
-  interim step. Both lines can go once #348 ships. See `CLAUDE.md` > Release.
+  pattern that causes the staleness, honoured on its own by AutoBump 3.0.3 or newer (the release
+  carrying `rios0rios0/autobump#348`); nothing has to be set in the releaser's own
+  `~/.autobump.yaml`. On anything older the project file's `refresh: true` is warned about and
+  dropped and the release ships the stale lockfile, repaired by hand afterwards. See
+  `CLAUDE.md` > Release.
 - **`.github/workflows/default.yaml` passes `install_run_scripts: true`.** The shared workflow
   installs with `--mode=skip-build`, and `better-sqlite3` is a native addon the store tests need.
   Removing the flag fails every `KnexCodeHealthStore` test with "Could not locate the bindings file".
