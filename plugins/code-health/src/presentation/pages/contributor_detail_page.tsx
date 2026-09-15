@@ -42,6 +42,7 @@ import { contributorsRouteRef } from "../../routes";
 import type { TrendSeries } from "../components/charts/trend_chart";
 import { TrendChart } from "../components/charts/trend_chart";
 import { OwnedRepositoriesCard } from "../components/owned_repositories_card";
+import { ContributorRatesCard } from "../components/contributor_rates_card";
 import { ScoreCard } from "../components/score_card";
 import { TrendRangePicker } from "../components/trend_range_picker";
 import type { UseCoverageResult } from "../hooks/use_coverage";
@@ -94,7 +95,7 @@ const SONAR_CAVEAT =
  * reliability means the same thing whoever else is on the team.
  */
 const PRODUCTIVITY_SUBHEADER =
-  "Output — commits, merged pull requests, churn and reviews — is read as a share of the top figure anybody recorded in the same window, so a quiet month for the whole team is a quiet month rather than everybody's failure. Reliability and quality — the pipeline success rate, and the gate and coverage of the code touched — are absolute. Anything that could not be measured is left out rather than scored as zero, and the weight below says how much of the score survived.";
+  "Output — commits, merged pull requests, churn and reviews — is read as a rate: the totals below divided by the days this range spans, each against the team's average rate over the same period, with twice that average scoring full marks. A quiet month for the whole team is then a quiet month rather than everybody's failure, and somebody who joined halfway through the range is not penalised for the half they were not here. Reliability and quality — the pipeline success rate, and the gate and coverage of the code touched — are absolute. Anything that could not be measured is left out rather than scored as zero, and the weight below says how much of the score survived.";
 
 /**
  * What the configured integrations add to the reading above.
@@ -104,7 +105,7 @@ const PRODUCTIVITY_SUBHEADER =
  * be left to work out for itself why every weight below moved.
  */
 const INTEGRATION_SUBHEADER =
-  "Coding time and tickets resolved join the score wherever their integration is configured, read against the fleet's top figure in the window exactly as output is; documentation written joins it too, but over Confluence's own trailing window, which the range above does not move. Only how much of somebody's resolved work stayed resolved is absolute. The weights are shared out over whatever is configured, so each component below carries a smaller share than it would on its own.";
+  "Coding time and tickets resolved join the score wherever their integration is configured, read as rates against the team's average exactly as output is; documentation written joins it too, but over Confluence's own trailing window, which the range above does not move, so it is compared as a total rather than as a rate. Only how much of somebody's resolved work stayed resolved is absolute. The weights are shared out over whatever is configured, so each component below carries a smaller share than it would on its own.";
 
 const COMMIT_SERIES: readonly TrendSeries[] = [
   { key: CONTRIBUTOR_SERIES.commits, label: "Commits", area: true },
@@ -312,7 +313,7 @@ const ChurnSection = ({
  * table already prints, computed by the same code over a bucket instead of a
  * window, so a figure here and a figure there can never disagree — and the
  * score is taken from the wire rather than recomputed, because a bucket's
- * score is read against the fleet's top figure in that bucket and the browser
+ * score is read against the fleet's average in that bucket and the browser
  * only ever holds this one person's row.
  *
  * The person arrives in the query string. A person key is `user:default/jane`
@@ -383,8 +384,9 @@ export const ContributorDetailPage = ({
 
       <ContentHeader title="Trends">
         <TrendRangePicker
-          months={range.months}
+          selection={range.selection}
           offered={range.offered}
+          months={range.months}
           onChange={range.select}
         />
       </ContentHeader>
@@ -427,6 +429,19 @@ export const ContributorDetailPage = ({
             />
           </Grid>
 
+          {/* Directly under the score, because it is the score's own arithmetic
+              written out: a reader who disagrees with the number can see which
+              row they disagree with. */}
+          {summary === null ? null : (
+            <Grid item xs={12}>
+              <ContributorRatesCard
+                summary={summary}
+                window={range.window}
+                capabilities={capabilities}
+              />
+            </Grid>
+          )}
+
           <ChartCard
             title="Commits"
             subheader={`Commits authored, with the pull requests of theirs that merged. A merge commit belongs to nobody and a squash belongs to the pull request's author, so merging somebody else's work adds nothing here. ${bucketNote}`}
@@ -465,7 +480,7 @@ export const ContributorDetailPage = ({
 
           <ChartCard
             title="Score over time"
-            subheader={`The productivity score each bucket earned, against the fleet's top figures in that same bucket. A bucket in which nothing measurable happened anywhere has no score, and the line breaks.${
+            subheader={`The productivity score each bucket earned, against the team's average rate in that same bucket. A bucket in which nothing measurable happened anywhere has no score, and the line breaks.${
               capabilities.confluence
                 ? " Documentation written counts in the score above and on no point here: Confluence answers for a trailing window rather than a day, so a bucket cannot measure it."
                 : ""

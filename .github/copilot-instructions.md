@@ -124,8 +124,12 @@ New files behind the trends, ownership and administration work:
   shares its weight among the rest, and `evidence` says how much survived. Never default a missing
   figure to zero: "we do not know" and "they did badly" are different claims, on rows people are
   evaluated by. Productivity reads output (commits 20%, merged PRs 20%, churn 10%, reviews 15%) as a
-  share of the fleet's top figure in the same window and reliability/quality absolutely (pipeline
-  15%, gate 10%, coverage 10%); churn is only compared inside its own `churnUnit`. Where an
+  **rate against the fleet's mean rate** — each total over the window's days, against the mean
+  across the rows the component could be measured on, with `FLEET_RATE_CEILING` (2) times that mean
+  scoring full marks — and reliability/quality absolutely (pipeline 15%, gate 10%, coverage 10%);
+  churn is only compared inside its own `churnUnit`. The mean, not the maximum: one outlier used to
+  flatten a whole team. `fleetReferenceOf(rows, days)` carries the window's days, and the per-bucket
+  scores pass that bucket's own length. Where an
   integration is **configured**, it adds components on the same terms — coding time 10%, tickets
   resolved 15% and documentation written 10% relative (the last over Confluence's trailing window,
   never the picked one, and left out of per-bucket scores), tickets that stayed done 5% absolute — and
@@ -136,6 +140,15 @@ New files behind the trends, ownership and administration work:
   is absolute throughout (gate 15%, coverage 15%, defects 10%, duplication 5%, debt 5%, branch build
   10%, build success 10%, policy 10%, docs 5%, review coverage 10%, PRs landed 5%). The two Sonar
   components on a person describe the repositories they changed, not the code they wrote.
+- **The owner column shows a name and a photograph, not a slug.** `getEntityProfiles` resolves the
+  owning entity's `spec.profile` on read — any kind, since `spec.owner` is usually a `Group` — in one
+  query bounded by the *distinct* owners, never one per row. `ownerProfile` is null for an owner the
+  catalog no longer holds, and the column falls back to the slug and sorts/filters on whichever name
+  is rendered.
+- **`useTrendWindow` holds a `TrendSelection`**, a rolling count or a calendar month, and memoises
+  everything on `trendSelectionKey` — a fresh window object per render puts the fetching hook in a
+  request loop. A month resolves through the tables' `toWindow`, so one month is one window on both
+  screens.
 - **Ownership is the catalog's `spec.owner`**, stored on the repository row as `owner_ref` by
   discovery and normalised as the catalog normalises it (a bare name is a group in the default
   namespace). A person owns a repository when its owner is their `User` entity or a group they

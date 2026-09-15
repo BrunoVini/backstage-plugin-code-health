@@ -120,22 +120,27 @@ const idsOf = (score: ReturnType<typeof computeProductivityScore>): string[] =>
   score.components.map((component) => component.id);
 
 describe("fleetReferenceOf", () => {
-  it("should take the top figure of every relative component", () => {
+  it("should take the mean daily rate of every relative component", () => {
     // given
+    // The mean, not the maximum: against the top figure, one person having an
+    // extraordinary month pushed everybody else down for reasons that had
+    // nothing to do with them.
     const contributors = [
       aContributor({ commits: 3, pullRequestsMerged: 9, reviewsGiven: 1, linesOfCode: 50 }),
       aContributor({ commits: 12, pullRequestsMerged: 2, reviewsGiven: 7, linesOfCode: 900 }),
     ];
 
     // when
-    const reference = fleetReferenceOf(contributors);
+    const reference = fleetReferenceOf(contributors, 10);
 
     // then
     expect(reference).toEqual({
-      commits: 12,
-      pullRequestsMerged: 9,
-      reviewsGiven: 7,
-      linesOfCode: 900,
+      days: 10,
+      // (3 + 12) / 2 people / 10 days
+      commits: 0.75,
+      pullRequestsMerged: 0.55,
+      reviewsGiven: 0.4,
+      linesOfCode: 47.5,
       changedFiles: 0,
       codingSeconds: 0,
       issuesResolved: 0,
@@ -152,20 +157,22 @@ describe("fleetReferenceOf", () => {
     ];
 
     // when
-    const reference = fleetReferenceOf(contributors);
+    const reference = fleetReferenceOf(contributors, 1);
 
     // then
-    // The `none` row reports figures the provider never gave, so they are not
-    // a reference for anybody.
+    // Each unit averages over its own rows alone, so the single lines row is
+    // its own mean rather than being divided by all three. The `none` row
+    // reports figures the provider never gave and is a reference for nobody.
     expect(reference.linesOfCode).toBe(400);
     expect(reference.changedFiles).toBe(30);
   });
 
-  it("should take the top integration figure, skipping the rows nothing was asked for", () => {
+  it("should average the integration figures over the rows they were measured on", () => {
     // given
     // A row with no metrics is an account nobody linked, not somebody who
-    // recorded nothing — it takes no part in the maximum either way, but the
-    // two have to stay distinguishable further down.
+    // recorded nothing. Counting it as a zero would drag the mean towards
+    // nothing and flatter every row that does carry a figure — which matters
+    // far more for a mean than it did for a maximum.
     const contributors = [
       aContributor({
         wakaTimeMetrics: wakaTime(7200),
@@ -181,17 +188,33 @@ describe("fleetReferenceOf", () => {
     ];
 
     // when
-    const reference = fleetReferenceOf(contributors);
+    const reference = fleetReferenceOf(contributors, 1);
 
     // then
-    expect(reference.codingSeconds).toBe(7200);
-    expect(reference.issuesResolved).toBe(11);
-    expect(reference.documentationContributions).toBe(5);
+    // Two measured rows, not three: (7200 + 1800) / 2, not / 3.
+    expect(reference.codingSeconds).toBe(4500);
+    expect(reference.issuesResolved).toBe(7.5);
+    expect(reference.documentationContributions).toBe(3);
+  });
+
+  it("should floor the window at a fraction of a day", () => {
+    // given
+    // The shortest range the dashboard offers is an hour, and a zero
+    // denominator would turn every rate into infinity on exactly the range a
+    // freshly installed plugin opens with.
+    const contributors = [aContributor({ commits: 1 })];
+
+    // when
+    const reference = fleetReferenceOf(contributors, 0);
+
+    // then
+    expect(Number.isFinite(reference.commits)).toBe(true);
+    expect(reference.commits).toBe(24);
   });
 
   it("should be empty for nobody", () => {
     // given / when / then
-    expect(fleetReferenceOf([])).toEqual(EMPTY_FLEET_REFERENCE);
+    expect(fleetReferenceOf([], 1)).toEqual(EMPTY_FLEET_REFERENCE);
   });
 });
 
@@ -272,14 +295,14 @@ describe("computeProductivityScore", () => {
   it("should score an install with no integration exactly as it did before there were any", () => {
     // given
     const contributor = aContributor({ sonarMetrics: sonar({ coverage: 80 }) });
-    const reference = fleetReferenceOf([contributor]);
+    const reference = fleetReferenceOf([contributor], 1);
 
     // when
     const score = computeProductivityScore(contributor, reference);
 
     // then
     // The seven original components at the seven original weights: switching
-    // nothing on has to leave the number, and its workings, where they were.
+    // nothing on has to leave the workings where they were.
     expect(score.components.map(({ id, weight }) => [id, weight])).toEqual([
       ["commits", 0.2],
       ["pullRequestsMerged", 0.2],
@@ -289,25 +312,65 @@ describe("computeProductivityScore", () => {
       ["qualityGate", 0.1],
       ["coverage", 0.1],
     ]);
-    // 0.8 on the pipeline is the only component below one.
-    expect(score.value).toBe(97);
     expect(score.evidence).toBe(1);
   });
 
-  it("should give the fleet's top performer full marks on every relative component", () => {
+  it("should score the only person measured at half on every relative component", () => {
     // given
+    // They are the team average by definition, and average is half — not the
+    // full marks the top-figure reference used to hand out for being alone.
     const contributor = aContributor({ sonarMetrics: sonar({ coverage: 80 }) });
-    const reference = fleetReferenceOf([contributor]);
+    const reference = fleetReferenceOf([contributor], 1);
 
     // when
     const score = computeProductivityScore(contributor, reference);
 
     // then
-    expect(componentById(score, "commits")?.normalized).toBe(1);
-    expect(componentById(score, "churn")?.normalized).toBe(1);
+    expect(componentById(score, "commits")?.normalized).toBe(0.5);
+    expect(componentById(score, "churn")?.normalized).toBe(0.5);
   });
 
-  it("should read output as a share of the fleet's top figure", () => {
+  it("should give full marks for twice the team's average rate", () => {
+    // given
+    // Keeping pace scores half and doubling it scores everything, so
+    // "average" reads as average rather than as a failure.
+    const average = aContributor({ commits: 10, linesOfCode: 400 });
+    const double = aContributor({ key: "vcs:sam", commits: 20, linesOfCode: 800 });
+    const reference = fleetReferenceOf([average, double], 1);
+
+    // when
+    const doubled = computeProductivityScore(double, reference);
+    const below = computeProductivityScore(average, reference);
+
+    // then
+    // The mean of 10 and 20 is 15; twice that is 30, so 20 lands at two thirds.
+    expect(componentById(doubled, "commits")?.normalized).toBeCloseTo(20 / 30, 3);
+    expect(componentById(below, "commits")?.normalized).toBeCloseTo(10 / 30, 3);
+  });
+
+  it("should not let one outlier flatten everybody else", () => {
+    // given
+    // The failure the top-figure reference had: one person having an
+    // extraordinary month pushed every colleague down for reasons that had
+    // nothing to do with them.
+    const steady = aContributor({ commits: 10 });
+    const peers = [steady, aContributor({ key: "b", commits: 10 }), aContributor({ key: "c", commits: 10 })];
+
+    // when
+    const withoutOutlier = computeProductivityScore(steady, fleetReferenceOf(peers, 1));
+    const withOutlier = computeProductivityScore(
+      steady,
+      fleetReferenceOf([...peers, aContributor({ key: "d", commits: 200 })], 1),
+    );
+
+    // then
+    // Against the maximum this would have collapsed from 0.5 to 0.025. Against
+    // the mean it moves by the outlier's share of four people, not by its size.
+    expect(componentById(withoutOutlier, "commits")?.normalized).toBe(0.5);
+    expect(componentById(withOutlier, "commits")?.normalized).toBeCloseTo(10 / 115, 3);
+  });
+
+  it("should read output as a rate against twice the team's average rate", () => {
     // given
     const contributor = aContributor({ commits: 5, pullRequestsMerged: 1, reviewsGiven: 0 });
     const reference = { ...EMPTY_FLEET_REFERENCE, commits: 20, pullRequestsMerged: 4, reviewsGiven: 8, linesOfCode: 800 };
@@ -316,19 +379,20 @@ describe("computeProductivityScore", () => {
     const score = computeProductivityScore(contributor, reference);
 
     // then
+    // 5 a day against a mean of 20 a day: a share of the 40 that scores full.
     expect(componentById(score, "commits")).toMatchObject({
       value: 5,
-      normalized: 0.25,
-      detail: "5 commits against the window's top figure of 20",
+      normalized: 0.125,
+      detail: "5 commits a day against the team's average of 20 commits a day",
     });
     expect(componentById(score, "reviewsGiven")).toMatchObject({ value: 0, normalized: 0 });
-    expect(componentById(score, "churn")?.normalized).toBe(0.5);
+    expect(componentById(score, "churn")?.normalized).toBe(0.25);
   });
 
   it("should leave a relative component unmeasured when nobody recorded any", () => {
     // given
     const contributor = aContributor({ reviewsGiven: 0 });
-    const reference = { ...fleetReferenceOf([contributor]), reviewsGiven: 0 };
+    const reference = { ...fleetReferenceOf([contributor], 1), reviewsGiven: 0 };
 
     // when
     const score = computeProductivityScore(contributor, reference);
@@ -352,8 +416,8 @@ describe("computeProductivityScore", () => {
     // then
     expect(componentById(score, "churn")).toMatchObject({
       value: 15,
-      normalized: 0.5,
-      detail: "15 changed files against the window's top figure of 30",
+      normalized: 0.25,
+      detail: "15 changed files a day against the team's average of 30 changed files a day",
     });
   });
 
@@ -362,7 +426,7 @@ describe("computeProductivityScore", () => {
     const contributor = aContributor({ churnUnit: "none" });
 
     // when
-    const score = computeProductivityScore(contributor, fleetReferenceOf([contributor]));
+    const score = computeProductivityScore(contributor, fleetReferenceOf([contributor], 1));
 
     // then
     expect(componentById(score, "churn")?.normalized).toBeNull();
@@ -374,8 +438,8 @@ describe("computeProductivityScore", () => {
     const undecided = aContributor({ pipelineRuns: 4, pipelineRunsSucceeded: 0, pipelineRunsFailed: 0, pipelineSuccessRate: 0 });
 
     // when
-    const decidedScore = computeProductivityScore(decided, fleetReferenceOf([decided]));
-    const undecidedScore = computeProductivityScore(undecided, fleetReferenceOf([undecided]));
+    const decidedScore = computeProductivityScore(decided, fleetReferenceOf([decided], 1));
+    const undecidedScore = computeProductivityScore(undecided, fleetReferenceOf([undecided], 1));
 
     // then
     expect(componentById(decidedScore, "pipelineSuccessRate")).toMatchObject({
@@ -392,7 +456,7 @@ describe("computeProductivityScore", () => {
     const failing = aContributor({ sonarMetrics: sonar({ qualityGateStatus: "ERROR", coverage: 40 }) });
 
     // when
-    const score = computeProductivityScore(failing, fleetReferenceOf([failing]));
+    const score = computeProductivityScore(failing, fleetReferenceOf([failing], 1));
 
     // then
     expect(componentById(score, "qualityGate")).toMatchObject({ value: 0, normalized: 0 });
@@ -406,8 +470,8 @@ describe("computeProductivityScore", () => {
     const noGate = aContributor({ sonarMetrics: sonar({ qualityGateStatus: "NONE" }) });
 
     // when
-    const unmeasuredScore = computeProductivityScore(unmeasured, fleetReferenceOf([unmeasured]));
-    const noGateScore = computeProductivityScore(noGate, fleetReferenceOf([noGate]));
+    const unmeasuredScore = computeProductivityScore(unmeasured, fleetReferenceOf([unmeasured], 1));
+    const noGateScore = computeProductivityScore(noGate, fleetReferenceOf([noGate], 1));
 
     // then
     expect(componentById(unmeasuredScore, "qualityGate")?.normalized).toBeNull();
@@ -446,7 +510,7 @@ describe("computeProductivityScore", () => {
       jiraMetrics: jira({ issuesResolved: 4 }),
       confluenceMetrics: confluence({ pagesCreated: 3 }),
     });
-    const reference = fleetReferenceOf([contributor]);
+    const reference = fleetReferenceOf([contributor], 1);
 
     // when
     const off = computeProductivityScore(contributor, reference);
@@ -461,10 +525,10 @@ describe("computeProductivityScore", () => {
     expect(idsOf(jiraOn)).not.toContain("documentation");
   });
 
-  it("should read coding time against the window's top figure", () => {
+  it("should read coding time as a rate against the team's average", () => {
     // given
     const contributor = aContributor({ wakaTimeMetrics: wakaTime(5400) });
-    const reference = { ...fleetReferenceOf([contributor]), codingSeconds: 9000 };
+    const reference = { ...fleetReferenceOf([contributor], 1), codingSeconds: 9000 };
 
     // when
     const score = computeProductivityScore(contributor, reference, WAKATIME_ONLY);
@@ -472,8 +536,8 @@ describe("computeProductivityScore", () => {
     // then
     expect(componentById(score, "codingTime")).toMatchObject({
       value: 5400,
-      normalized: 0.6,
-      detail: "1h 30m against the window's top figure of 2h 30m",
+      normalized: 0.3,
+      detail: "1h 30m a day against the team's average of 2h 30m a day",
     });
   });
 
@@ -484,7 +548,7 @@ describe("computeProductivityScore", () => {
     // when
     const score = computeProductivityScore(
       contributor,
-      { ...fleetReferenceOf([contributor]), codingSeconds: 9000 },
+      { ...fleetReferenceOf([contributor], 1), codingSeconds: 9000 },
       WAKATIME_ONLY,
     );
 
@@ -504,7 +568,7 @@ describe("computeProductivityScore", () => {
     // when
     const score = computeProductivityScore(
       contributor,
-      fleetReferenceOf([contributor]),
+      fleetReferenceOf([contributor], 1),
       WAKATIME_ONLY,
     );
 
@@ -515,10 +579,10 @@ describe("computeProductivityScore", () => {
     });
   });
 
-  it("should read resolved tickets against the window's top figure", () => {
+  it("should read resolved tickets as a rate against the team's average", () => {
     // given
     const contributor = aContributor({ jiraMetrics: jira({ issuesResolved: 3 }) });
-    const reference = { ...fleetReferenceOf([contributor]), issuesResolved: 6 };
+    const reference = { ...fleetReferenceOf([contributor], 1), issuesResolved: 6 };
 
     // when
     const score = computeProductivityScore(contributor, reference, JIRA_ONLY);
@@ -526,15 +590,15 @@ describe("computeProductivityScore", () => {
     // then
     expect(componentById(score, "ticketsResolved")).toMatchObject({
       value: 3,
-      normalized: 0.5,
-      detail: "3 resolved tickets against the window's top figure of 6",
+      normalized: 0.25,
+      detail: "3 resolved tickets a day against the team's average of 6 resolved tickets a day",
     });
   });
 
   it("should leave both Jira components unmeasured for an account nobody has linked", () => {
     // given
     const contributor = aContributor({ jiraMetrics: null });
-    const reference = { ...fleetReferenceOf([contributor]), issuesResolved: 6 };
+    const reference = { ...fleetReferenceOf([contributor], 1), issuesResolved: 6 };
 
     // when
     const score = computeProductivityScore(contributor, reference, JIRA_ONLY);
@@ -557,7 +621,7 @@ describe("computeProductivityScore", () => {
     // when
     const score = computeProductivityScore(
       contributor,
-      fleetReferenceOf([contributor]),
+      fleetReferenceOf([contributor], 1),
       JIRA_ONLY,
     );
 
@@ -579,7 +643,7 @@ describe("computeProductivityScore", () => {
     // when
     const score = computeProductivityScore(
       contributor,
-      { ...fleetReferenceOf([contributor]), issuesResolved: 60 },
+      { ...fleetReferenceOf([contributor], 1), issuesResolved: 60 },
       JIRA_ONLY,
     );
 
@@ -602,7 +666,7 @@ describe("computeProductivityScore", () => {
     // when
     const score = computeProductivityScore(
       contributor,
-      fleetReferenceOf([contributor]),
+      fleetReferenceOf([contributor], 1),
       JIRA_ONLY,
     );
 
@@ -620,7 +684,7 @@ describe("computeProductivityScore", () => {
     // when
     const score = computeProductivityScore(
       contributor,
-      { ...fleetReferenceOf([contributor]), issuesResolved: 9 },
+      { ...fleetReferenceOf([contributor], 1), issuesResolved: 9 },
       JIRA_ONLY,
     );
 
@@ -632,14 +696,14 @@ describe("computeProductivityScore", () => {
     });
   });
 
-  it("should read documentation against the top figure over Confluence's trailing window", () => {
+  it("should read documentation against the team's average over Confluence's trailing window", () => {
     // given
     // Pages, versions, blog posts, comments and attachments together — writing
     // a page and answering three questions on somebody else's both count.
     const contributor = aContributor({
       confluenceMetrics: confluence({ pagesCreated: 2, commentsWritten: 3 }),
     });
-    const reference = { ...fleetReferenceOf([contributor]), documentationContributions: 10 };
+    const reference = { ...fleetReferenceOf([contributor], 1), documentationContributions: 10 };
 
     // when
     const score = computeProductivityScore(contributor, reference, CONFLUENCE_ONLY);
@@ -647,16 +711,16 @@ describe("computeProductivityScore", () => {
     // then
     expect(componentById(score, "documentation")).toMatchObject({
       value: 5,
-      normalized: 0.5,
+      normalized: 0.25,
       detail:
-        "5 Confluence contributions against the top figure of 10 over Confluence's trailing window, not the range picked",
+        "5 Confluence contributions against the team's average of 10 over Confluence's trailing window, not the range picked",
     });
   });
 
   it("should leave documentation unmeasured for an account nobody has linked", () => {
     // given
     const contributor = aContributor({ confluenceMetrics: null });
-    const reference = { ...fleetReferenceOf([contributor]), documentationContributions: 10 };
+    const reference = { ...fleetReferenceOf([contributor], 1), documentationContributions: 10 };
 
     // when
     const score = computeProductivityScore(contributor, reference, CONFLUENCE_ONLY);
@@ -675,7 +739,7 @@ describe("computeProductivityScore", () => {
     // when
     const score = computeProductivityScore(
       contributor,
-      fleetReferenceOf([contributor]),
+      fleetReferenceOf([contributor], 1),
       CONFLUENCE_ONLY,
     );
 
@@ -694,7 +758,7 @@ describe("computeProductivityScore", () => {
       jiraMetrics: jira({ issuesResolved: 4, reopened: 0 }),
       confluenceMetrics: confluence({ pagesCreated: 5 }),
     });
-    const reference = fleetReferenceOf([contributor]);
+    const reference = fleetReferenceOf([contributor], 1);
 
     // when
     const score = computeProductivityScore(contributor, reference, EVERYTHING);
@@ -702,7 +766,11 @@ describe("computeProductivityScore", () => {
     // then
     expect(score.components).toHaveLength(11);
     expect(componentById(score, "commits")?.weight).toBeCloseTo(0.2 / 1.4, 10);
-    expect(componentById(score, "codingTime")?.normalized).toBe(1);
+    // The only person measured is the team average, so every *relative*
+    // component lands at half — including the ones the integrations added.
+    expect(componentById(score, "codingTime")?.normalized).toBe(0.5);
+    // `reopened` is absolute, so being alone says nothing about it: nothing
+    // they resolved came back, which is full marks whoever else is on the team.
     expect(componentById(score, "reopened")?.normalized).toBe(1);
     expect(score.evidence).toBe(1);
   });

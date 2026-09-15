@@ -1,4 +1,5 @@
 import type { Entity } from "@backstage/catalog-model";
+import type { EntityProfile } from "@rios0rios0/backstage-plugin-code-health-common";
 import type { EntityFilter } from "../../src/domain/entities/ingestion_settings";
 import type { CatalogReader, CatalogUser } from "../../src/domain/services/catalog_reader";
 
@@ -10,6 +11,8 @@ export class StubCatalogReader implements CatalogReader {
 
   private ownership = new Map<string, readonly string[]>();
 
+  private profiles = new Map<string, EntityProfile>();
+
   /** Filters each call was made with, so tests can assert what was requested. */
   readonly calls: Array<readonly EntityFilter[]> = [];
 
@@ -18,6 +21,10 @@ export class StubCatalogReader implements CatalogReader {
 
   /** References each ownership lookup was made with, for the same reason. */
   readonly ownershipLookups: string[] = [];
+
+  /** References each profile lookup was made with, so a test can assert it is
+   * one call bounded by the distinct owners rather than one call per row. */
+  readonly profileLookups: Array<readonly string[]> = [];
 
   withUsers(users: Record<string, CatalogUser>): StubCatalogReader {
     this.users = new Map(Object.entries(users));
@@ -30,6 +37,23 @@ export class StubCatalogReader implements CatalogReader {
    */
   withMemberships(userEntityRef: string, groupRefs: readonly string[]): StubCatalogReader {
     this.ownership.set(userEntityRef, groupRefs);
+    return this;
+  }
+
+  /**
+   * Declares the owning entities the catalog holds, of any kind.
+   *
+   * `displayName` is required here for the same reason the wire type requires
+   * it: the adapter falls back to `metadata.name`, so a resolved profile always
+   * carries a name and a double that allowed a null one could not stand in.
+   */
+  withProfiles(profiles: Record<string, { displayName: string; picture?: string }>): StubCatalogReader {
+    this.profiles = new Map(
+      Object.entries(profiles).map(([entityRef, profile]) => [
+        entityRef,
+        { entityRef, displayName: profile.displayName, picture: profile.picture ?? null },
+      ]),
+    );
     return this;
   }
 
@@ -63,6 +87,23 @@ export class StubCatalogReader implements CatalogReader {
       [...this.users.entries()]
         .map(([email, user]) => [email.toLowerCase(), user] as const)
         .filter(([email]) => wanted.has(email)),
+    );
+  }
+
+  async getEntityProfiles(
+    entityRefs: readonly string[],
+  ): Promise<Map<string, EntityProfile>> {
+    this.profileLookups.push(entityRefs);
+    if (this.failure) throw this.failure;
+
+    // Mirrors the adapter: a reference the catalog does not hold is simply
+    // absent, so the caller renders the slug rather than being handed a
+    // fabricated name.
+    return new Map(
+      entityRefs.flatMap((ref) => {
+        const profile = this.profiles.get(ref);
+        return profile === undefined ? [] : [[ref, profile] as const];
+      }),
     );
   }
 

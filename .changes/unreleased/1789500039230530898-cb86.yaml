@@ -1,0 +1,3 @@
+kind: 'Changed'
+body: 'changed the repositories table''s **Owner** column to show the owning entity''s name and photograph rather than its `spec.owner` slug, resolved from the catalog on read for `Group` owners as well as `User` ones. The column now sorts and filters on the name actually rendered, and falls back to the slug for an owner the catalog no longer holds'
+time: '2026-09-15T19:20:39.230446027Z'

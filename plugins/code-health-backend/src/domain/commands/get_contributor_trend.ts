@@ -13,6 +13,7 @@ import {
   computeProductivityScore,
   fleetReferenceOf,
   NO_INTEGRATIONS,
+  windowDaysOf,
 } from "@rios0rios0/backstage-plugin-code-health-common";
 import { bucketEnd, bucketsInWindow } from "../entities/bucket";
 import type { CodeHealthEvent } from "../entities/code_health_event";
@@ -21,7 +22,7 @@ import {
   aggregateContributorSummaries,
   zeroContributorSummary,
 } from "../entities/contributor_aggregation";
-import { startOfDay, toDay, type Day } from "../entities/day";
+import { daysBetween, startOfDay, toDay, type Day } from "../entities/day";
 import { loadPersonDirectory } from "../entities/person_directory";
 import type { RepositorySnapshot } from "../entities/repository_snapshot";
 import type {
@@ -194,10 +195,20 @@ export class GetContributorTrend {
     const score =
       summary === null
         ? null
-        : computeProductivityScore(summary, fleetReferenceOf(windowRows), capabilities);
+        : computeProductivityScore(
+            summary,
+            fleetReferenceOf(
+              windowRows,
+              windowDaysOf({ from: input.from.toISOString(), to: input.to.toISOString() }),
+            ),
+            capabilities,
+          );
 
     const points = bucketsInWindow(input.from, input.to, input.bucket).map((start) => {
       const last = bucketEnd(start, input.bucket, to);
+      // Both ends are days and the last one is inclusive, so a bucket that
+      // starts and ends on the same day spans one day rather than none.
+      const bucketDays = daysBetween(start, last) + 1;
       const rows = aggregateContributorSummaries(
         accumulateContributors({
           events: eventsWithin(events, start, last),
@@ -226,7 +237,10 @@ export class GetContributorTrend {
         // every point while measured on the headline — and a line folded from
         // one component fewer than the card above it would sit below that
         // card for the whole window, claiming to be the same quantity.
-        score: computeProductivityScore(row, fleetReferenceOf(rows), {
+        // The bucket's own length, not the window's: a rate is only comparable
+        // against a mean taken over the same period, and the last bucket of a
+        // weekly series is routinely a part week.
+        score: computeProductivityScore(row, fleetReferenceOf(rows, bucketDays), {
           ...capabilities,
           confluence: false,
         }),

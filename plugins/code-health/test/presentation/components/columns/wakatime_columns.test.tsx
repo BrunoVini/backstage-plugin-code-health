@@ -38,6 +38,7 @@ const renderRepositories = (repositories: RepositorySummary[]) =>
 const renderContributors = (contributors: ReturnType<ContributorBuilder["build"]>[]) =>
   renderInTestApp(
     <ContributorsTable
+      window={{ from: "2026-08-01T00:00:00.000Z", to: "2026-08-08T00:00:00.000Z" }}
       contributors={contributors}
       totalCount={contributors.length}
       isLoading={false}

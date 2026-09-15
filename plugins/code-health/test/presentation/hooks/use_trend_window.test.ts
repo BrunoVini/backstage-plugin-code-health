@@ -16,7 +16,7 @@ describe("useTrendWindow", () => {
     const { result } = renderHook(() => useTrendWindow(coverage));
 
     // then
-    expect(result.current.months).toBe(3);
+    expect(result.current.selection).toEqual({ kind: "months", months: 3 });
     expect(result.current.offered).toEqual([1, 2, 3, 4, 5, 6]);
     expect(daysSpanned(result.current.window)).toBeGreaterThanOrEqual(89);
     expect(result.current.bucket).toBe("week");
@@ -28,10 +28,10 @@ describe("useTrendWindow", () => {
     const { result } = renderHook(() => useTrendWindow(coverage, 1));
 
     // when
-    const { bucket, months } = result.current;
+    const { bucket, selection } = result.current;
 
     // then
-    expect(months).toBe(1);
+    expect(selection).toEqual({ kind: "months", months: 1 });
     expect(bucket).toBe("day");
   });
 
@@ -42,13 +42,45 @@ describe("useTrendWindow", () => {
     const before = result.current.window;
 
     // when
-    act(() => result.current.select(6));
+    act(() => result.current.select({ kind: "months", months: 6 }));
 
     // then
-    expect(result.current.months).toBe(6);
+    expect(result.current.selection).toEqual({ kind: "months", months: 6 });
     expect(daysSpanned(result.current.window)).toBeGreaterThan(daysSpanned(before));
     // The end does not move: the clock was sampled once, when the page opened.
     expect(result.current.window.to).toBe(before.to);
+  });
+
+  it("should offer every calendar month the backfill has reached, newest first", () => {
+    // given
+    const coverage = aCoverageInfo({ earliestDay: "2025-01-01" });
+
+    // when
+    const { result } = renderHook(() => useTrendWindow(coverage));
+
+    // then
+    const [newest] = result.current.months;
+    const now = new Date();
+    expect(newest).toEqual({ year: now.getFullYear(), month: now.getMonth() + 1 });
+    expect(result.current.months.length).toBeGreaterThan(6);
+  });
+
+  it("should resolve a calendar month to that month's window", () => {
+    // given
+    const coverage = aCoverageInfo({ earliestDay: "2025-01-01" });
+    const { result } = renderHook(() => useTrendWindow(coverage));
+    const [, previous] = result.current.months;
+
+    // when
+    act(() => result.current.select({ kind: "month", month: previous! }));
+
+    // then
+    const from = new Date(result.current.window.from);
+    expect(from.getFullYear()).toBe(previous!.year);
+    expect(from.getMonth() + 1).toBe(previous!.month);
+    expect(from.getDate()).toBe(1);
+    // A finished month is bucketed by day, being well under the daily limit.
+    expect(result.current.bucket).toBe("day");
   });
 
   it("should fall back to the widest count offered when the requested one is not covered", () => {
@@ -63,7 +95,24 @@ describe("useTrendWindow", () => {
     // then
     // Forty days of history covers one month, not six.
     expect(result.current.offered).toEqual([1]);
-    expect(result.current.months).toBe(1);
+    expect(result.current.selection).toEqual({ kind: "months", months: 1 });
+  });
+
+  it("should fall back to a rolling count when the month picked is no longer covered", () => {
+    // given
+    // The coverage floor moves forward as history ages out of the retention, so
+    // a month that was offered yesterday can stop being answerable.
+    const coverage = aCoverageInfo({ earliestDay: "2025-01-01" });
+    const { result } = renderHook(() => useTrendWindow(coverage));
+
+    // when
+    act(() => result.current.select({ kind: "month", month: { year: 1999, month: 4 } }));
+
+    // then
+    // The widest count the backfill covers, which is the same fallback a
+    // too-wide rolling count gets: show as much as there is rather than a
+    // period that would come back empty.
+    expect(result.current.selection).toEqual({ kind: "months", months: 6 });
   });
 
   it("should offer the shortest count before coverage is known", () => {
@@ -72,6 +121,6 @@ describe("useTrendWindow", () => {
 
     // then
     expect(result.current.offered).toEqual([1]);
-    expect(result.current.months).toBe(1);
+    expect(result.current.selection).toEqual({ kind: "months", months: 1 });
   });
 });

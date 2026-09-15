@@ -157,7 +157,7 @@ export const pipelineSeries = (
 /**
  * The score each bucket earned, taken from the wire rather than recomputed.
  *
- * A bucket's score is read against the fleet's top figure *in that bucket*,
+ * A bucket's score is read against the fleet's average rate *in that bucket*,
  * which the browser never receives — it holds one person's row, not everyone's
  * — so recomputing it here would silently produce a different number from the
  * one the score card shows.

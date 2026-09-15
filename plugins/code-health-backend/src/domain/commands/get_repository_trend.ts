@@ -28,6 +28,7 @@ import type {
   CodeHealthStore,
   ContributorMetricRow,
 } from "../repositories/code_health_store";
+import type { CatalogReader } from "../services/catalog_reader";
 
 export interface RepositoryTrend {
   readonly summary: RepositorySummary;
@@ -89,7 +90,16 @@ const rowsWithin = (
   rows.filter((row) => row.day >= from && row.day <= to);
 
 export class GetRepositoryTrend {
-  constructor(private readonly store: CodeHealthStore) {}
+  constructor(
+    private readonly store: CodeHealthStore,
+    /**
+     * Resolves the owner to a name and a photograph, so the detail page's
+     * header reads the same as the table row it was opened from. Optional for
+     * the same reason it is on the table: no catalog means slugs, not a
+     * failure.
+     */
+    private readonly catalog?: Pick<CatalogReader, "getEntityProfiles">,
+  ) {}
 
   /**
    * One repository's history, bucketed, beside the row the table shows.
@@ -139,6 +149,14 @@ export class GetRepositoryTrend {
     const repository = tracked.repository;
     const snapshotAt = snapshotTimeline(baseline, rangeSnapshots);
 
+    // One reference, so one lookup — and resolved once for the whole page
+    // rather than per bucket, where the answer could not differ.
+    const ownerRef = repository.catalogFacts.ownerRef;
+    const ownerProfiles =
+      this.catalog === undefined || ownerRef === null
+        ? new Map()
+        : await this.catalog.getEntityProfiles([ownerRef]);
+
     const rowFor = (
       day: Day,
       bucketEvents: readonly CodeHealthEvent[],
@@ -153,6 +171,7 @@ export class GetRepositoryTrend {
         bucketEvents,
         aggregateWakaTimeProjects(rowsWithin(wakaTimeRows, window.from, window.to)),
         window,
+        ownerProfiles,
       );
 
     const summary = rowFor(to, events, { from, to });

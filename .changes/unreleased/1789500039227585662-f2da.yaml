@@ -1,0 +1,3 @@
+kind: 'Added'
+body: 'added calendar months to the range picker on both detail pages, alongside the rolling one-to-six-month counts. A month resolves through the same `toWindow` the tables use, so "September" cannot mean two different windows depending on which screen it was picked from'
+time: '2026-09-15T19:20:39.227531039Z'

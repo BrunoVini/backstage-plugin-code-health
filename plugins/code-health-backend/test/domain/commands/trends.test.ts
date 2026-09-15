@@ -169,14 +169,16 @@ describe("GetContributorTrend", () => {
 
     // then
     expect(trend.summary?.commits).toBe(2);
-    expect(trend.score?.value).toBe(100);
+    // The only person measured is the team average, and average is half — not
+    // the full marks the old top-figure reference handed out for being alone.
+    expect(trend.score?.value).toBe(50);
   });
 
   it("should score each bucket against the fleet in that bucket", async () => {
     // given
-    // A score is a share of the top figure anybody recorded in the same period.
-    // Scored against the whole window's peak instead, a normal week beside one
-    // exceptional week reads as a collapse.
+    // A score is a rate against the team's average rate in the same period.
+    // Scored against the whole window's average instead, a normal week beside
+    // one exceptional week reads as a collapse.
     const { store, discovered } = await seed();
     const [repository] = discovered;
     await ingest(store, repository.id, [
@@ -195,14 +197,14 @@ describe("GetContributorTrend", () => {
     });
 
     // then
-    // Alone on the 6th, so the top figure is their own; one against nine on the
-    // 7th, so a tenth of it.
+    // Alone on the 6th, so they are the average, which is half. On the 7th one
+    // against nine: the mean of 1 and 9 is 5, and twice that is 10, so a tenth.
     const commits = (day: string) =>
       trend.points.find((point) => point.day === day)?.score.components.find(
         (component) => component.id === "commits",
       );
-    expect(commits("2026-08-06")?.normalized).toBe(1);
-    expect(commits("2026-08-07")?.normalized).toBeCloseTo(0.1111, 3);
+    expect(commits("2026-08-06")?.normalized).toBe(0.5);
+    expect(commits("2026-08-07")?.normalized).toBeCloseTo(0.1, 3);
   });
 
   it("should fill Sonar forward from the baseline into a bucket with no snapshot", async () => {

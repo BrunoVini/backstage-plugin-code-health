@@ -121,6 +121,7 @@ export const ContributorsPage = ({
       </Box>
 
       <ContributorsTable
+        window={range.window}
         contributors={contributors}
         totalCount={contributors.length}
         isLoading={isLoading}

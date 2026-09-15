@@ -241,7 +241,9 @@ describe("ContributorDetailPage", () => {
     expect(
       await screen.findByRole("list", { name: "Productivity score components" }),
     ).toBeInTheDocument();
-    expect(screen.getByText(/read as a share of the top figure/u)).toBeInTheDocument();
+    expect(
+      screen.getByText(/against the team's average rate over the same period/u),
+    ).toBeInTheDocument();
   });
 
   it("should say how the integrations join the score once one is configured", async () => {
@@ -460,7 +462,9 @@ describe("ContributorDetailPage", () => {
     await waitFor(() => expect(trendService.contributorCalls).toHaveLength(1));
 
     // when
-    fireEvent.change(screen.getByLabelText("Trend range"), { target: { value: "6" } });
+    fireEvent.change(screen.getByLabelText("Trend range"), {
+      target: { value: "months:6" },
+    });
 
     // then
     await waitFor(() => expect(trendService.contributorCalls.length).toBeGreaterThan(1));

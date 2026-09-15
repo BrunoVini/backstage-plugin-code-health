@@ -1,6 +1,7 @@
 import type {
   ApiExposure,
   DocumentationStatus,
+  EntityProfile,
   RepositorySummary,
   WakaTimeDayTotal,
   WakaTimeMetrics,
@@ -201,6 +202,12 @@ export const buildRepositorySummary = (
   events: readonly CodeHealthEvent[] | undefined,
   wakaTimeByProject: ReadonlyMap<string, ProjectTotals>,
   window: SummaryWindow,
+  /**
+   * The owning entities' names and photographs, keyed by reference. Omitted
+   * where no catalog is wired in, which leaves every row's `ownerProfile` null
+   * — the same "not resolved" the frontend already renders as the bare slug.
+   */
+  ownerProfiles?: ReadonlyMap<string, EntityProfile>,
 ): RepositorySummary => {
   // Undefined on a snapshot written before the scan existed, which is the same
   // "not measured" case as never having been snapshotted at all.
@@ -210,6 +217,10 @@ export const buildRepositorySummary = (
     id: repository.id,
     entityRef: repository.entityRef,
     ownerRef: repository.catalogFacts.ownerRef,
+    ownerProfile:
+      repository.catalogFacts.ownerRef === null
+        ? null
+        : (ownerProfiles?.get(repository.catalogFacts.ownerRef) ?? null),
     platform: repository.platform,
     name: repository.name,
     fullName: repositoryFullName(repository),

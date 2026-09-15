@@ -10,6 +10,7 @@ import { DiscoveredRepositoryBuilder } from "../../builders/discovered_repositor
 import { EventBuilder } from "../../builders/event_builder";
 import { WakaTimeMetricsBuilder } from "../../builders/wakatime_metrics_builder";
 import { InMemoryCodeHealthStore } from "../../doubles/in_memory_code_health_store";
+import { StubCatalogReader } from "../../doubles/stub_catalog_reader";
 import { StubDirectoryReader } from "../../doubles/stub_directory_reader";
 
 const NOW = new Date("2026-08-10T12:00:00.000Z");
@@ -55,6 +56,89 @@ const seed = async (repositories = 1) => {
 
 const commit = (repositoryId: string, at: string, actor = "dev@example.com") =>
   EventBuilder.commit().withRepository(repositoryId).withActor(actor).at(at).withChurn(10, 2, 1);
+
+describe("ListRepositorySummaries owner profiles", () => {
+  it("should resolve each owner to the name and photograph the catalog holds", async () => {
+    // given
+    const { store, discovered } = await seed(1);
+    const [repository] = discovered;
+    await store.syncRepositories({
+      discovered: [{ ...repository!, catalogFacts: { ...repository!.catalogFacts, ownerRef: "group:default/platform" } }],
+      retentionDays: 365,
+      now: NOW,
+    });
+    const catalog = new StubCatalogReader().withProfiles({
+      "group:default/platform": { displayName: "Platform", picture: "https://example.com/p.png" },
+    });
+
+    // when
+    const [summary] = await new ListRepositorySummaries(store, catalog).run(WINDOW);
+
+    // then
+    expect(summary?.ownerProfile).toEqual({
+      entityRef: "group:default/platform",
+      displayName: "Platform",
+      picture: "https://example.com/p.png",
+    });
+  });
+
+  it("should ask once for the distinct owners rather than once per row", async () => {
+    // given
+    // Two hundred repositories in an organisation share a handful of teams, and
+    // a lookup per row would be two hundred catalog queries per dashboard load.
+    const { store, discovered } = await seed(3);
+    await store.syncRepositories({
+      discovered: discovered.map((repository) => ({
+        ...repository,
+        catalogFacts: { ...repository.catalogFacts, ownerRef: "group:default/platform" },
+      })),
+      retentionDays: 365,
+      now: NOW,
+    });
+    const catalog = new StubCatalogReader().withProfiles({
+      "group:default/platform": { displayName: "Platform" },
+    });
+
+    // when
+    await new ListRepositorySummaries(store, catalog).run(WINDOW);
+
+    // then
+    expect(catalog.profileLookups).toHaveLength(1);
+    expect(catalog.profileLookups[0]).toEqual(["group:default/platform"]);
+  });
+
+  it("should leave the profile null for an owner the catalog no longer holds", async () => {
+    // given
+    // A person who has left is a row with no photograph, not a failed request.
+    const { store, discovered } = await seed(1);
+    const [repository] = discovered;
+    await store.syncRepositories({
+      discovered: [{ ...repository!, catalogFacts: { ...repository!.catalogFacts, ownerRef: "user:default/ghost" } }],
+      retentionDays: 365,
+      now: NOW,
+    });
+
+    // when
+    const [summary] = await new ListRepositorySummaries(store, new StubCatalogReader()).run(
+      WINDOW,
+    );
+
+    // then
+    expect(summary?.ownerRef).toBe("user:default/ghost");
+    expect(summary?.ownerProfile).toBeNull();
+  });
+
+  it("should render slugs rather than failing when no catalog is wired in", async () => {
+    // given
+    const { store } = await seed(1);
+
+    // when
+    const [summary] = await new ListRepositorySummaries(store).run(WINDOW);
+
+    // then
+    expect(summary?.ownerProfile).toBeNull();
+  });
+});
 
 describe("ListRepositorySummaries", () => {
   it("should read a snapshot written before the integration fields existed", async () => {

@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import { useRouteRef } from "@backstage/core-plugin-api";
+import Avatar from "@material-ui/core/Avatar";
 import Box from "@material-ui/core/Box";
 import Checkbox from "@material-ui/core/Checkbox";
 import FormControlLabel from "@material-ui/core/FormControlLabel";
@@ -19,6 +20,7 @@ import {
   useReactTable,
 } from "@tanstack/react-table";
 import type {
+  EntityProfile,
   IntegrationCapabilities,
   RepositoryHealthScore,
   RepositorySummary,
@@ -214,30 +216,78 @@ const RepositoryNameCell = ({ repository }: { repository: RepositorySummary }) =
   );
 };
 
+const useOwnerStyles = makeStyles((theme) => ({
+  row: { display: "flex", alignItems: "center", gap: theme.spacing(1) },
+  avatar: { width: 24, height: 24, fontSize: "0.7rem" },
+}));
+
+/** Up to two initials, from a display name or an e-mail-shaped slug. */
+const ownerInitials = (name: string): string =>
+  name
+    .replace(/@.*$/u, "")
+    .split(/[\s._-]+/u)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((word) => word[0]?.toUpperCase() ?? "")
+    .join("");
+
 /**
- * The owner's name as the catalog spells it, linked to the entity that owns it.
+ * The owner as a person or a team rather than as a slug, linked to the entity.
  *
- * A reference the catalog cannot address degrades to an empty cell rather than
- * to a link that would 404 — the same rule the repository name follows.
+ * The photograph and the name come from the owning entity's `spec.profile`,
+ * resolved by the backend when the row was built — the same fields the
+ * contributors table reads, so one human looks the same on both screens. This
+ * column used to print `metadata.name`, which for a directory that names users
+ * after their address reads `j.doe_example.com` on every row and left a
+ * reader translating slugs back into people by hand.
+ *
+ * The slug is the fallback, not an error: an owner the catalog no longer holds
+ * still says who the YAML names. A reference the catalog cannot address at all
+ * degrades to an empty cell rather than to a link that would 404 — the same
+ * rule the repository name follows.
  */
-const OwnerCell = ({ ownerRef }: { ownerRef: string | null }) => {
+const OwnerCell = ({
+  ownerRef,
+  profile,
+}: {
+  ownerRef: string | null;
+  profile: EntityProfile | null;
+}) => {
+  const classes = useOwnerStyles();
   const parsed = ownerRef === null ? null : parseEntityRef(ownerRef);
   const path = ownerRef === null ? null : catalogEntityPath(ownerRef);
 
   if (parsed === null || path === null) return <EmptyCell />;
 
+  const name = profile?.displayName ?? parsed.name;
+
   return (
-    <Link component={RouterLink} to={path} title={ownerRef ?? undefined}>
-      <Typography variant="body2" component="span">
-        {parsed.name}
-      </Typography>
-    </Link>
+    <Box className={classes.row}>
+      <Avatar src={profile?.picture ?? undefined} alt="" className={classes.avatar}>
+        {/* Initials rather than a silhouette, for the same reason the
+            contributors table uses them: most directories photograph only some
+            of their people, and a generic icon makes every team identical. */}
+        {ownerInitials(name)}
+      </Avatar>
+      <Link component={RouterLink} to={path} title={ownerRef ?? undefined}>
+        <Typography variant="body2" component="span">
+          {name}
+        </Typography>
+      </Link>
+    </Box>
   );
 };
 
-/** The name a `spec.owner` reference goes under, for sorting and filtering. */
-const ownerNameOf = (ownerRef: string | null): string =>
-  ownerRef === null ? "" : (parseEntityRef(ownerRef)?.name ?? "");
+/**
+ * The name a `spec.owner` goes under for sorting and filtering.
+ *
+ * The resolved display name where there is one, so filtering for "Platform"
+ * matches what the reader can actually see — a column that sorts and filters
+ * on a hidden slug is a column whose order nobody can predict.
+ */
+const ownerNameOf = (row: RepositorySummary): string =>
+  row.ownerProfile?.displayName ??
+  (row.ownerRef === null ? "" : (parseEntityRef(row.ownerRef)?.name ?? ""));
 
 /** Which of the reserved status colours each band borrows. */
 const HEALTH_BAND_TONES: Readonly<Record<ScoreBand, StatusTone>> = {
@@ -321,9 +371,14 @@ const columns: ColumnDef<RepositorySummary>[] = [
   },
   {
     id: "owner",
-    accessorFn: (row) => ownerNameOf(row.ownerRef),
+    accessorFn: ownerNameOf,
     header: "Owner",
-    cell: ({ row }) => <OwnerCell ownerRef={row.original.ownerRef} />,
+    cell: ({ row }) => (
+      <OwnerCell
+        ownerRef={row.original.ownerRef}
+        profile={row.original.ownerProfile}
+      />
+    ),
     filterFn: "includesString",
   },
   {

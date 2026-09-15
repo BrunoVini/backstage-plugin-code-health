@@ -27,7 +27,7 @@ import {
 export const aTrendPoint = (
   day: string,
   summary: ContributorSummary,
-  reference: FleetReference = fleetReferenceOf([summary]),
+  reference: FleetReference = fleetReferenceOf([summary], 1),
   capabilities: IntegrationCapabilities = NO_INTEGRATIONS,
 ): ContributorTrendPoint => ({
   day,

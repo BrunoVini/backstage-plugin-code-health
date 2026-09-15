@@ -108,6 +108,8 @@ Hexagonal: `domain/` holds entities, commands and ports; `infrastructure/` holds
 | `src/presentation/components/columns/` | One column-group factory per integration, called only when its flag is set |
 | `src/presentation/components/insights/` | Three card sets per integration — fleet, people, repositories — each gated on its flag; `detail_links.ts` is the one place a ranked row's link to a detail page is built |
 | `src/domain/entities/time_range.ts` | Which windows are offered, bounded by coverage — rolling ranges and calendar months |
+| `src/domain/entities/trend_range.ts` | The same two shapes for a detail page, resolving a month through the tables' own `toWindow` so one month cannot mean two windows |
+| `src/presentation/components/contributor_rates_card.tsx` | What one person does in a day, a week and a month — the score's own arithmetic written out |
 | `src/presentation/components/range_picker.tsx` | One control for both, so the two can never disagree; every offered month is in the list by name |
 | `src/presentation/hooks/range_selection_context.tsx` | The one selection the tabs share, so a month picked on one is still the month on the next |
 | `src/presentation/components/backfill_progress.tsx` | Why wider ranges are not available yet |
@@ -133,7 +135,8 @@ The wire contract, and the pure functions both sides have to agree on.
 |---|---|
 | `src/api.ts` | Every request and response shape, and the plugin id both packages register under |
 | `src/score.ts` | What a score is — a value, the evidence behind it, the components it was folded from — and `combineScore`, which redistributes the weight of anything unmeasured |
-| `src/productivity_score.ts` | The per-person components and their nominal weights, which integration each needs, the renormalisation over the configured set, and the fleet reference the relative ones are read against |
+| `src/productivity_score.ts` | The per-person components and their nominal weights, which integration each needs, the renormalisation over the configured set, and the fleet's **mean daily rate** the relative ones are read against |
+| `src/contributor_rates.ts` | A window total turned into a daily, weekly and monthly rate, and the wording every rate is said in |
 | `src/repository_health_score.ts` | The per-repository components, weights and decay constants |
 | `src/trend.ts` | The bucketed point shapes, `TREND_MONTHS`, and `trendBucketFor` — day up to 45 days, week beyond |
 | `src/ownership.ts` | `OwnershipInfo`, and `ownerEntityRef`, which normalises `spec.owner` exactly as the catalog does |
@@ -331,10 +334,26 @@ The wire contract, and the pure functions both sides have to agree on.
   carries what was measured, the share of the total it held and the sentence explaining how it was
   read, and `ScoreCard` renders them beside the number rather than behind it. A view that shows only
   `score.value` is a bug, not a compact rendering.
-- **Output is relative to the fleet; reliability and quality are absolute.** Commits, merged pull
-  requests, churn and reviews are read as a share of the top figure anybody recorded *in the same
-  window*, so a quiet month for the whole team is a quiet month rather than everybody's failure and
-  there is no invented "forty commits is a good month" to argue with. A pipeline success rate and a
+- **Output is a rate against the fleet's *mean* rate; reliability and quality are absolute.**
+  Commits, merged pull requests, churn and reviews are divided by the days the window spans and read
+  against the mean rate across the people the component could be measured on, with twice that mean
+  scoring full marks — so a quiet month for the whole team is a quiet month rather than everybody's
+  failure, and there is no invented "forty commits is a good month" to argue with.
+
+  **The mean, not the maximum.** Against the top figure one person having an extraordinary month
+  pushed every colleague down for reasons that had nothing to do with them, and a single automation
+  nobody had excluded yet could flatten a whole team at once. Against the mean, keeping pace scores
+  half, doubling it scores full, and an outlier moves the reference by its share of the headcount
+  rather than setting it outright.
+
+  **A rate, not a total**, because a total is not comparable between somebody who was there for the
+  whole window and somebody who joined halfway through it. The division cancels out of the ratio, so
+  the score is the same number either way; what it buys is that every sentence explaining it — and
+  the Averages card under it — reads in figures that mean the same thing whatever range was picked.
+  `FleetReference` therefore carries the window's `days` alongside the rates, because a rate
+  separated from its period is a number nobody can check. The mean skips rows the component was
+  never measured on rather than counting them as zeros: a maximum ignores a wrong zero, a mean is
+  moved by every one of them. A pipeline success rate and a
   quality gate mean the same thing whoever else is on the team, so those are read against
   themselves. Churn is only ever compared inside its own unit — `churnUnit` decides which reference
   a row is measured against, and a lines figure is never held up against a files figure.
@@ -369,6 +388,20 @@ The wire contract, and the pure functions both sides have to agree on.
   neither stands in for the other. The frontend asks `/v1/access` before drawing the control, but
   the route authorises again on every request — a button the browser did not draw is not an access
   control.
+- **An owner is shown as a person or a team, not as a slug.** `spec.owner` is a reference, and a
+  directory that names its users after their address turns the repositories table's owner column
+  into a page of `e.silva_example.com`. The owning entity's `spec.profile` — which `Group` entities
+  carry as well as `User` ones — is resolved on *read* by `getEntityProfiles`, bounded by the
+  *distinct* owners of the tracked set rather than by the rows, so two hundred repositories sharing
+  a handful of teams cost one small query per dashboard load. Resolved on read rather than stored by
+  discovery, because a name and a photograph change in the directory without anything in the
+  repository's YAML moving. The slug stays as the fallback and the column sorts and filters on
+  whichever name is actually rendered — a column that filters on a hidden string is one whose
+  results nobody can predict.
+- **A detail page offers calendar months, through the tables' own resolver.** Somebody who has just
+  read "September" on the Contributors tab and clicked into a person has to be able to ask the same
+  question about them. `trendWindowOf` delegates a month to `toWindow`, so one month cannot resolve
+  to two different windows depending on which screen it was picked from.
 - **Ownership comes from `spec.owner`, with group ancestry.** Discovery stores the entity's owner on
   the repository row (`owner_ref`, normalised the way the catalog normalises it, so a bare `team-a`
   and `group:default/team-a` match), and a person owns a repository when its owner is their `User`

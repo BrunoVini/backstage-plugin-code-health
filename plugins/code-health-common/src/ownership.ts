@@ -16,6 +16,26 @@ export interface OwnershipInfo {
   readonly owners: readonly string[];
 }
 
+/**
+ * What an owning entity is called and what it looks like.
+ *
+ * A `spec.owner` reference is a slug — `group:default/platform`,
+ * `user:default/j.doe_example.com` — and a table that prints the slug
+ * makes a reader translate every row back into a person or a team by hand.
+ * The catalog already holds the name and the photograph on the entity's
+ * `spec.profile`, for `Group` entities as well as `User` ones, so both are
+ * resolved on read and carried beside the reference.
+ *
+ * `displayName` always has a value: an entity with no profile name falls back
+ * to its own `metadata.name`, which is what the reference's slug already
+ * showed, so a row never renders nameless.
+ */
+export interface EntityProfile {
+  readonly entityRef: string;
+  readonly displayName: string;
+  readonly picture: string | null;
+}
+
 /** What `spec.owner` means when it names no kind, as the catalog reads it. */
 export const DEFAULT_OWNER_KIND = "group";
 

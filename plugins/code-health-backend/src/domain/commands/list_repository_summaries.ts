@@ -15,6 +15,7 @@ import {
   unsnapshotted,
 } from "../entities/repository_summary_builder";
 import type { CodeHealthStore } from "../repositories/code_health_store";
+import type { CatalogReader } from "../services/catalog_reader";
 
 /** Groups a flat list of events by the repository they belong to. */
 export const groupEventsByRepository = (
@@ -29,8 +30,29 @@ export const groupEventsByRepository = (
   return byRepository;
 };
 
+/** The distinct owners of a tracked set — a team list, not a directory. */
+export const distinctOwnerRefs = (
+  repositories: readonly { repository: { catalogFacts: { ownerRef: string | null } } }[],
+): string[] => [
+  ...new Set(
+    repositories.flatMap(({ repository }) =>
+      repository.catalogFacts.ownerRef === null ? [] : [repository.catalogFacts.ownerRef],
+    ),
+  ),
+];
+
 export class ListRepositorySummaries {
-  constructor(private readonly store: CodeHealthStore) {}
+  constructor(
+    private readonly store: CodeHealthStore,
+    /**
+     * Resolves an owner reference to a name and a photograph.
+     *
+     * Optional so the command stays testable without a catalog, and so an
+     * install whose catalog is briefly unreachable renders slugs rather than
+     * failing the whole table.
+     */
+    private readonly catalog?: Pick<CatalogReader, "getEntityProfiles">,
+  ) {}
 
   /**
    * Builds one dashboard row per tracked repository.
@@ -66,6 +88,15 @@ export class ListRepositorySummaries {
     // repository's coding time is the sum of what its people logged against the
     // matching project, so an excluded person's hours reaching it would leave
     // the two tabs disagreeing about the same hours.
+    // One query for the whole table, bounded by the distinct owners rather than
+    // by the rows: two hundred repositories in an organisation share a handful
+    // of teams, and a lookup per row would be two hundred catalog queries per
+    // dashboard load.
+    const ownerProfiles =
+      this.catalog === undefined
+        ? new Map()
+        : await this.catalog.getEntityProfiles(distinctOwnerRefs(tracked));
+
     const wakaTimeByProject = aggregateWakaTimeProjects(
       measuredContributorMetrics(wakaTimeRows, people, "wakatime"),
     );
@@ -81,6 +112,7 @@ export class ListRepositorySummaries {
         eventsByRepository.get(repository.id),
         wakaTimeByProject,
         window,
+        ownerProfiles,
       ),
     );
   }
