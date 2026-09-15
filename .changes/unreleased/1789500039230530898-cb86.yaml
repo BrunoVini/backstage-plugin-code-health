@@ -1,3 +1,0 @@
-kind: 'Changed'
-body: 'changed the repositories table''s **Owner** column to show the owning entity''s name and photograph rather than its `spec.owner` slug, resolved from the catalog on read for `Group` owners as well as `User` ones. The column now sorts and filters on the name actually rendered, and falls back to the slug for an owner the catalog no longer holds. `RepositorySummary` carries the profile as `ownerProfile` — a *response* shape the backend fills, so only something that constructs one by hand, such as a test fixture or a stub backend, has to supply it'
-time: '2026-09-15T19:20:39.230446027Z'

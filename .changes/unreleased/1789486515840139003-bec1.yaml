@@ -1,3 +1,0 @@
-kind: 'Changed'
-body: 'changed the **Identities** tab to open on the accounts nobody has linked, which are the only rows that need anything done to them; a switch widens it to every account, and a new **Measurement** filter narrows it to the excluded ones'
-time: '2026-09-15T15:35:15.84007059Z'
