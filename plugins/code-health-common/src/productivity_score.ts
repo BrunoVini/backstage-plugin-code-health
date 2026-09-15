@@ -1,5 +1,5 @@
 import { confluenceContributions } from "./confluence_metrics";
-import { describeRate } from "./contributor_rates";
+import { describeRatePair } from "./contributor_rates";
 import type { ContributorSummary } from "./contributor_summary";
 import type { IntegrationCapabilities, IntegrationId } from "./integrations";
 import { NO_INTEGRATIONS } from "./integrations";
@@ -252,18 +252,23 @@ const relative = (
   fleetRate: number,
   days: number,
   noun: string,
-): ScoreComponent =>
-  fleetRate <= 0
-    ? unmeasuredComponent(definition, `nobody recorded any ${noun}s in this window`)
-    : measuredComponent(
-        definition,
-        value,
-        shareOf(value / days, fleetRate * FLEET_RATE_CEILING),
-        `${describeRate(value / days, noun)} against the team's average of ${describeRate(
-          fleetRate,
-          noun,
-        )}`,
-      );
+): ScoreComponent => {
+  if (fleetRate <= 0) {
+    return unmeasuredComponent(definition, `nobody recorded any ${noun}s in this window`);
+  }
+
+  // Both halves in one period, chosen once. Said independently they land in
+  // different units whenever they straddle one a day, and the sentence then
+  // contradicts the share it is explaining.
+  const said = describeRatePair(value / days, fleetRate, noun);
+
+  return measuredComponent(
+    definition,
+    value,
+    shareOf(value / days, fleetRate * FLEET_RATE_CEILING),
+    `${said.value} against the team's average of ${said.reference}`,
+  );
+};
 
 const churnOf = (
   definition: ScoreComponentDefinition,
@@ -365,7 +370,7 @@ const codingTimeOf = (
   if (reference.codingSeconds <= 0) {
     return unmeasuredComponent(definition, "nobody recorded any coding time in this window");
   }
-  // Said as a duration a day rather than through `describeRate`, because
+  // Said as a duration a day rather than through `describeRatePair`, because
   // "1.23 seconds a day" is a sentence nobody can read and hours are what
   // coding time is thought in everywhere else on the page.
   return measuredComponent(

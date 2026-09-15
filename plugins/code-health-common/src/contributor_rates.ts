@@ -175,8 +175,44 @@ const PERIOD_SUFFIX: Readonly<Record<RatePeriodId, string>> = {
   monthly: "a month",
 };
 
+/** A per-day rate expressed over a named period. */
+const rateIn = (perDay: number, period: RatePeriodId): number =>
+  perDay * RATE_PERIODS[period].days;
+
 /** How a rate is said in a sentence: `0.8 commits a day`. */
 export const describeRate = (perDay: number, noun: string): string => {
   const { value, period } = legibleRate(perDay);
   return `${formatRate(value)} ${noun}${value === 1 ? "" : "s"} ${PERIOD_SUFFIX[period]}`;
+};
+
+/**
+ * Two rates said in one sentence, in **one** period.
+ *
+ * The period is chosen from the reference alone and both figures are then
+ * expressed in it. Letting each half pick its own — which is what calling
+ * {@link describeRate} twice does — puts them in different units whenever they
+ * straddle one a day, and the sentence then reads as the opposite of the score
+ * it is explaining: thirty reviews over thirty days against a team average of
+ * half a day comes out as "1 review a day against the team's average of 3.5
+ * reviews a week", which looks well behind the team beside a score of full
+ * marks. Per-person means for merged pull requests and reviews sit below one a
+ * day on most teams while an active contributor sits above it, so that straddle
+ * is the common case rather than a corner.
+ *
+ * The reference is what chooses, not the person, so the unit does not jump
+ * about from row to row as the figure being explained changes.
+ */
+export const describeRatePair = (
+  perDay: number,
+  referencePerDay: number,
+  noun: string,
+): { readonly value: string; readonly reference: string } => {
+  const { period } = legibleRate(referencePerDay);
+
+  const say = (rate: number): string => {
+    const scaled = rateIn(rate, period);
+    return `${formatRate(scaled)} ${noun}${scaled === 1 ? "" : "s"} ${PERIOD_SUFFIX[period]}`;
+  };
+
+  return { value: say(perDay), reference: say(referencePerDay) };
 };

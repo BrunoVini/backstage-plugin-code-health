@@ -140,6 +140,7 @@ export type {
 export {
   contributorRatesOf,
   describeRate,
+  describeRatePair,
   formatRate,
   legibleRate,
   RATE_PERIOD_IDS,

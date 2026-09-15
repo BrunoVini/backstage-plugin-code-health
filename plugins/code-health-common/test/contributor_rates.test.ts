@@ -2,6 +2,7 @@ import type { ContributorSummary } from "../src";
 import {
   contributorRatesOf,
   describeRate,
+  describeRatePair,
   formatRate,
   legibleRate,
   RATE_PERIODS,
@@ -229,5 +230,52 @@ describe("describeRate", () => {
   it("should not pluralise exactly one of something", () => {
     // given / when / then
     expect(describeRate(1, "commit")).toBe("1 commit a day");
+  });
+});
+
+describe("describeRatePair", () => {
+  it("should say both rates in one period even when they straddle one a day", () => {
+    // given
+    // Thirty reviews over thirty days against a team average of half a day.
+    // Said independently these land in different units, and the sentence then
+    // reads as well behind the team beside a score of full marks.
+
+    // when
+    const said = describeRatePair(1, 0.5, "review");
+
+    // then
+    // Both in weeks, so the sentence reads as the twice-the-team it is.
+    expect(said.value).toBe("7 reviews a week");
+    expect(said.reference).toBe("3.5 reviews a week");
+  });
+
+  it("should let the reference choose the period, not the person", () => {
+    // given
+    // Otherwise the unit jumps about from row to row as the figure being
+    // explained changes, while the thing it is compared against stays put.
+
+    // when
+    const busy = describeRatePair(50, 0.5, "commit");
+    const quiet = describeRatePair(0.1, 0.5, "commit");
+
+    // then
+    expect(busy.value).toBe("350 commits a week");
+    expect(busy.reference).toBe("3.5 commits a week");
+    expect(quiet.value).toBe("0.7 commits a week");
+    expect(quiet.reference).toBe("3.5 commits a week");
+  });
+
+  it("should keep both halves daily when the reference is a day or more", () => {
+    // given / when
+    const said = describeRatePair(4, 2, "commit");
+
+    // then
+    expect(said.value).toBe("4 commits a day");
+    expect(said.reference).toBe("2 commits a day");
+  });
+
+  it("should not pluralise exactly one of something", () => {
+    // given / when / then
+    expect(describeRatePair(1, 3, "commit").value).toBe("1 commit a day");
   });
 });

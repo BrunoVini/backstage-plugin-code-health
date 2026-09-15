@@ -330,6 +330,27 @@ describe("computeProductivityScore", () => {
     expect(componentById(score, "churn")?.normalized).toBe(0.5);
   });
 
+  it("should not let a component's sentence contradict the share it explains", () => {
+    // given
+    // Thirty reviews over a thirty-day window against a fleet mean of half a
+    // day. The two halves used to pick their own period, so the detail read
+    // "1 review a day against the team's average of 3.5 reviews a week" —
+    // well behind the team — beside a normalized score of full marks.
+    const contributor = aContributor({ reviewsGiven: 30 });
+    const reference = { ...EMPTY_FLEET_REFERENCE, days: 30, reviewsGiven: 0.5 };
+
+    // when
+    const score = computeProductivityScore(contributor, reference);
+    const reviews = componentById(score, "reviewsGiven");
+
+    // then
+    expect(reviews?.normalized).toBe(1);
+    // Seven a week against three and a half: the twice-the-team the score says.
+    expect(reviews?.detail).toBe(
+      "7 reviews a week against the team's average of 3.5 reviews a week",
+    );
+  });
+
   it("should give full marks for twice the team's average rate", () => {
     // given
     // Keeping pace scores half and doubling it scores everything, so
