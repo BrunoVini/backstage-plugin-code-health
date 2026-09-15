@@ -436,27 +436,30 @@ one resting on all of them.
 
 #### Productivity — one person, over one window
 
-A reading aid, not a verdict. The output components are read **as a share of the fleet's top figure
-in the same window** rather than against a constant, so a quiet month for the whole team is a quiet
-month rather than everybody's failure, and there is no invented "forty commits is a good month" for
-anyone to argue with. Reliability and quality are absolute, because a pipeline success rate means
-the same thing whoever else happens to be on the team. Churn is only ever compared within its own
-unit — GitHub's lines against lines, Azure DevOps's files against files — because the two are not
-the same measurement wearing different labels.
+A reading aid, not a verdict. The output components are read **as a daily rate against the team's
+mean daily rate in the same window** rather than against a constant: each total is divided by the
+days the range spans and compared with the mean across the people it could be measured on, and
+twice that mean scores full marks. A quiet month for the whole team is then a quiet month rather
+than everybody's failure, there is no invented "forty commits is a good month" for anyone to argue
+with, and one person's extraordinary month moves the reference by their share of the headcount
+rather than setting it outright. Reliability and quality are absolute, because a pipeline success
+rate means the same thing whoever else happens to be on the team. Churn is only ever compared within
+its own unit — GitHub's lines against lines, Azure DevOps's files against files — because the two
+are not the same measurement wearing different labels.
 
 | Component | Weight | Read as |
 |---|---|---|
-| Commits | 20% | share of the window's top figure |
-| Pull requests merged | 20% | share of the window's top figure |
-| Code churn | 10% | share of the top figure **in the same unit** |
-| Reviews given | 15% | share of the window's top figure |
+| Commits | 20% | rate against twice the team's mean rate |
+| Pull requests merged | 20% | rate against twice the team's mean rate |
+| Code churn | 10% | rate against twice the team's mean rate **in the same unit** |
+| Reviews given | 15% | rate against twice the team's mean rate |
 | Pipeline success | 15% | absolute, over the runs that reached a verdict |
 | Quality gate of code touched | 10% | absolute |
 | Test coverage of code touched | 10% | absolute, against the 80% Sonar gate |
-| Coding time | 10% | **WakaTime only** — share of the window's top figure |
-| Tickets resolved | 15% | **Jira only** — share of the window's top figure |
+| Coding time | 10% | **WakaTime only** — rate against twice the team's mean rate |
+| Tickets resolved | 15% | **Jira only** — rate against twice the team's mean rate |
 | Tickets that stayed done | 5% | **Jira only** — absolute, over this person's own resolved tickets |
-| Documentation written | 10% | **Confluence only** — share of the top figure over Confluence's trailing window, which the range picker does not move |
+| Documentation written | 10% | **Confluence only** — total against twice the team's mean over Confluence's trailing window, which the range picker does not move |
 
 The two Sonar components describe **the repositories the person changed, not the code they wrote** —
 Sonar measures a project — which is why they carry the least weight and why every Sonar heading says

@@ -1,5 +1,5 @@
 import type { TimeSeriesBucket } from "@rios0rios0/backstage-plugin-code-health-common";
-import { addDays, daysInRange, toDay, type Day } from "./day";
+import { addDays, daysInRange, lastDayOf, toDay, type Day } from "./day";
 
 /**
  * The first day of the bucket a day belongs to.
@@ -57,8 +57,9 @@ export const bucketsInWindow = (
 ): Day[] => {
   const starts = new Set<Day>();
   // The window is half-open, so its last instant belongs to the previous day
-  // whenever `to` lands exactly on midnight.
-  for (const day of daysInRange(toDay(from), toDay(new Date(to.getTime() - 1)))) {
+  // whenever `to` lands exactly on midnight — the same day every other read
+  // of the window ends on.
+  for (const day of daysInRange(toDay(from), lastDayOf(to))) {
     starts.add(bucketStart(day, bucket));
   }
   return [...starts].sort((left, right) => left.localeCompare(right));

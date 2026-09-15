@@ -9,7 +9,7 @@ import type {
 import { computeRepositoryHealthScore } from "@rios0rios0/backstage-plugin-code-health-common";
 import { bucketEnd, bucketsInWindow } from "../entities/bucket";
 import type { CodeHealthEvent } from "../entities/code_health_event";
-import { startOfDay, toDay, type Day } from "../entities/day";
+import { lastDayOf, startOfDay, toDay, type Day } from "../entities/day";
 import {
   loadPersonDirectory,
   measuredContributorMetrics,
@@ -118,7 +118,8 @@ export class GetRepositoryTrend {
     bucket: TimeSeriesBucket;
   }): Promise<RepositoryTrend> {
     const from = toDay(input.from);
-    const to = toDay(input.to);
+    // The day before `to` when the window ends at midnight — see `lastDayOf`.
+    const to = lastDayOf(input.to);
     const repositoryIds = [input.repositoryId];
 
     const [tracked, collected, collectedWakaTime, [baseline], rangeSnapshots, people] =

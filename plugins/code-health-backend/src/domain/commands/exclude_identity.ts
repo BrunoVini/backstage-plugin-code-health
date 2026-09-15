@@ -13,9 +13,9 @@ import { UnknownIdentityError } from "./link_identity";
  * service Azure DevOps performs merges as, the bot that opens dependency pull
  * requests, an outside contributor to a public repository, somebody who left
  * last year. Left in, each of them is a contributor row — and worse than a row,
- * because output is scored as a share of the top figure anybody recorded in the
- * window, so an automation that merges two hundred pull requests a month sets
- * the bar every human on the team is then measured against.
+ * because output is scored against the team's mean rate in the window, so an
+ * automation that merges two hundred pull requests a month drags up the bar
+ * every human on the team is then measured against.
  *
  * The reason is required. It is the whole justification for a row disappearing
  * from every table, and six months later it is the only thing that can tell an

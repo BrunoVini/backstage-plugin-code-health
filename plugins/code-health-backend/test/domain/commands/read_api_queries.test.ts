@@ -257,6 +257,32 @@ describe("ListRepositorySummaries", () => {
     expect(summary.primaryLanguage).toBe("Go");
   });
 
+  it("should not read a snapshot from the day the window ends at the start of", async () => {
+    // given
+    // A calendar month ends at the first instant of the next one, and the
+    // snapshot taken that morning describes the month after, not this one.
+    const { store, discovered } = await seed();
+    const [repository] = discovered;
+    await store.saveSnapshot({
+      repositoryId: repository.id,
+      day: "2026-08-10",
+      capturedAt: NOW,
+      payload: aSnapshotPayload({ primaryLanguage: "Go" }),
+    });
+    await store.saveSnapshot({
+      repositoryId: repository.id,
+      day: "2026-08-11",
+      capturedAt: NOW,
+      payload: aSnapshotPayload({ primaryLanguage: "Rust" }),
+    });
+
+    // when
+    const [summary] = await new ListRepositorySummaries(store).run(WINDOW);
+
+    // then
+    expect(summary.primaryLanguage).toBe("Go");
+  });
+
   it("should sum the coding time its people logged against the matching project", async () => {
     // given
     // WakaTime measures a person and a *project*; a repository's coding time is
@@ -1135,7 +1161,9 @@ describe("ListContributorSummaries", () => {
     for (const [day, seconds] of [
       ["2026-08-09", 3600],
       ["2026-08-10", 1800],
-      // Outside the window, and must not be counted.
+      // The window ends at the first instant of the 11th and never reaches into
+      // it, so neither day may be counted.
+      ["2026-08-11", 9999],
       ["2026-08-12", 9999],
     ] as const) {
       await store.saveContributorMetrics({

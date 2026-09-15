@@ -17,7 +17,7 @@ import {
  * The score is computed rather than invented, by the same function the backend
  * uses, so a test asserting on a chart of scores is asserting on the arithmetic
  * that actually ships. The reference defaults to the bucket's own row, which
- * makes a lone contributor the top figure in their own window — the shape a
+ * makes a lone contributor the team average in their own window — the shape a
  * one-person fixture would really have.
  *
  * The capabilities default to none for the same reason the backend's do: a

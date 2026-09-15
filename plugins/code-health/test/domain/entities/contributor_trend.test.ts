@@ -204,7 +204,7 @@ describe("contributor trend series", () => {
 
   it("should take each bucket's score from the wire rather than recomputing it", () => {
     // given
-    // A bucket's score is read against the fleet's top figure in that bucket,
+    // A bucket's score is read against the fleet's mean rate in that bucket,
     // which the browser never receives.
     const summary = ContributorBuilder.create().build();
     const points = [

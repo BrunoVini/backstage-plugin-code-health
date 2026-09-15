@@ -4,7 +4,7 @@ import type {
   WakaTimeMetrics,
 } from "@rios0rios0/backstage-plugin-code-health-common";
 import type { CodeHealthEvent } from "../entities/code_health_event";
-import { toDay } from "../entities/day";
+import { lastDayOf, toDay } from "../entities/day";
 import {
   loadPersonDirectory,
   measuredContributorMetrics,
@@ -95,7 +95,8 @@ export class ListRepositorySummaries {
    * nobody's credit.
    */
   async run(input: { from: Date; to: Date }): Promise<RepositorySummary[]> {
-    const window = { from: toDay(input.from), to: toDay(input.to) };
+    // The day before `to` when the window ends at midnight — see `lastDayOf`.
+    const window = { from: toDay(input.from), to: lastDayOf(input.to) };
 
     const [tracked, collected, snapshots, wakaTimeRows, people] = await Promise.all([
       this.store.listTrackedRepositories(),

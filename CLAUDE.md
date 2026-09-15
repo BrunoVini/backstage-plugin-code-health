@@ -201,9 +201,9 @@ The wire contract, and the pure functions both sides have to agree on.
 - **An account nobody has linked is not always a person, and the ones that are not are excluded
   rather than hidden.** A fleet carries build services, bots, outside contributors to public
   repositories and people who left last year, and leaving them in is not merely untidy: output is
-  scored as a share of the top figure anybody recorded *in the same window*, so an automation that
-  merges two hundred pull requests a month is the bar every human on the team is then measured
-  against. `code_health_identity_exclusions` records `(source, source_key)` with one of four
+  scored against the team's *mean* rate in the same window, so an automation that merges two
+  hundred pull requests a month drags up the bar every human on the team is then measured against.
+  `code_health_identity_exclusions` records `(source, source_key)` with one of four
   reasons — former contributor, open source contributor, automated bot, service or system account —
   and the reason is **required**, because a row disappearing from every table is only reviewable six
   months later if the justification was recorded at the moment somebody decided. The four are a
@@ -361,6 +361,20 @@ The wire contract, and the pure functions both sides have to agree on.
   quality gate mean the same thing whoever else is on the team, so those are read against
   themselves. Churn is only ever compared inside its own unit — `churnUnit` decides which reference
   a row is measured against, and a lines figure is never held up against a files figure.
+
+  **A bucket's fleet is the window's people.** On a person's trend every bucket is read against the
+  mean in that bucket, but the mean is taken over everybody the whole window measured, with a zero
+  row for anyone quiet in the bucket — the same zero row the person the page is about is given for
+  a bucket they were absent from. Taken over the active only, each bucket's mean sits above the
+  headline's and the "Score over time" line sits under the number it claims to be. A zero row keeps
+  churn and every integration null, so it is a measured nothing for commits, pull requests and
+  reviews and stays out of every mean nothing was recorded for.
+- **A window's last day is the day before `to` when `to` is midnight.** The events query is
+  half-open on instants, but snapshots and the per-day WakaTime and Jira rows are read by inclusive
+  day, and a calendar month resolves to a `to` at the first instant of the next month. Converting
+  that with `toDay` read the first of October into September — one snapshot and one day of measures
+  the window never covered — in the tables, on both detail pages and in the last bucket alike.
+  `lastDayOf` in `day.ts` is the one conversion every read uses, and `bucketsInWindow` uses it too.
 - **The productivity score follows the same integration rule its columns do.** Coding time, tickets
   resolved and documentation written join it on the same relative terms as output, and how much of
   somebody's resolved work stayed resolved joins it as an absolute; each exists only where its
