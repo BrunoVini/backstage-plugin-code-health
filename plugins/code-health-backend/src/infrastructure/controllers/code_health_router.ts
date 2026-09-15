@@ -2,6 +2,7 @@ import type { HttpAuthService, SchedulerService } from "@backstage/backend-plugi
 import { InputError, NotAllowedError, NotFoundError } from "@backstage/errors";
 import {
   CODE_HEALTH_API_VERSION,
+  isExclusionReason,
   isIdentitySource,
   isTimeSeriesBucket,
   type IdentitySource,
@@ -12,6 +13,7 @@ import express from "express";
 import Router from "express-promise-router";
 import { z } from "zod";
 import type { AuthorizeAdministrator } from "../../domain/commands/authorize_administrator";
+import type { ExcludeIdentity } from "../../domain/commands/exclude_identity";
 import type { GetContributorTrend } from "../../domain/commands/get_contributor_trend";
 import type { GetRepositoryTimeSeries } from "../../domain/commands/get_repository_time_series";
 import type { GetRepositoryTrend } from "../../domain/commands/get_repository_trend";
@@ -85,6 +87,12 @@ const linkSchema = z.object({
   entityRef: z.string().min(1),
 });
 
+const exclusionSchema = z.object({
+  source: z.string(),
+  sourceKey: z.string().min(1),
+  reason: z.string().min(1),
+});
+
 /**
  * How far back a reset reaches.
  *
@@ -128,11 +136,19 @@ const asHttpError = (error: unknown): unknown => {
   return error;
 };
 
-const readLinked = (value: unknown): boolean | undefined => {
+/**
+ * Reads a `true`/`false` query parameter that narrows the Identities screen.
+ *
+ * Absent means "do not narrow at all", which is a third answer rather than a
+ * default of false: the screen has to be able to ask for every account, for the
+ * ones with a link and for the ones without, and a missing parameter read as
+ * false would make the first of those impossible to express.
+ */
+const readFlag = (value: unknown, field: string): boolean | undefined => {
   if (value === undefined) return undefined;
   if (value === "true") return true;
   if (value === "false") return false;
-  throw new InputError("`linked` must be true or false");
+  throw new InputError(`\`${field}\` must be true or false`);
 };
 
 export interface CodeHealthRouterOptions {
@@ -147,6 +163,7 @@ export interface CodeHealthRouterOptions {
   readonly owned: ListOwnedRepositories;
   readonly identities: ListIdentities;
   readonly links: LinkIdentity;
+  readonly exclusions: ExcludeIdentity;
   readonly access: AuthorizeAdministrator;
   readonly reset: ResetIngestion;
   /** The furthest back a reset may be asked to reach. */
@@ -182,12 +199,14 @@ export const createCodeHealthRouter = (options: CodeHealthRouterOptions): expres
 
   router.get(`/${version}/identities`, async (request, response) => {
     const sources = readSources(request.query.source);
-    const linked = readLinked(request.query.linked);
+    const linked = readFlag(request.query.linked, "linked");
+    const excluded = readFlag(request.query.excluded, "excluded");
 
     response.json({
       items: await options.identities.run({
         ...(sources === undefined ? {} : { sources }),
         ...(linked === undefined ? {} : { linked }),
+        ...(excluded === undefined ? {} : { excluded }),
       }),
     });
   });
@@ -237,6 +256,61 @@ export const createCodeHealthRouter = (options: CodeHealthRouterOptions): expres
       }
 
       await options.links.unlink({ source, sourceKey });
+      response.status(204).end();
+    },
+  );
+
+  /**
+   * Takes an account out of every measurement the plugin makes.
+   *
+   * `PUT` for the same reason the link route is: an account has at most one
+   * exclusion, and excluding it twice has to mean what excluding it once meant.
+   * Re-sending it with a different reason is a correction, not a second
+   * exclusion.
+   */
+  router.put(`/${version}/identities/exclusions`, async (request, response) => {
+    // A signed-in user, not a service. This is the one write that makes rows
+    // disappear from every table in the plugin, and the only thing that makes
+    // that reviewable later is a name beside the reason.
+    const credentials = await options.httpAuth.credentials(request, { allow: ["user"] });
+
+    const parsed = exclusionSchema.safeParse(request.body);
+    if (!parsed.success) throw new InputError(parsed.error.message);
+    if (!isIdentitySource(parsed.data.source)) {
+      throw new InputError("`source` must be one of vcs, wakatime, jira or confluence");
+    }
+    if (!isExclusionReason(parsed.data.reason)) {
+      throw new InputError(
+        "`reason` must be one of former-contributor, open-source-contributor, automated-bot or service-account",
+      );
+    }
+
+    try {
+      await options.exclusions.exclude({
+        source: parsed.data.source,
+        sourceKey: parsed.data.sourceKey,
+        reason: parsed.data.reason,
+        excludedBy: credentials.principal.userEntityRef,
+        now: new Date(),
+      });
+    } catch (error) {
+      throw asHttpError(error);
+    }
+
+    response.status(204).end();
+  });
+
+  router.delete(
+    `/${version}/identities/exclusions/:source/:sourceKey`,
+    async (request, response) => {
+      await options.httpAuth.credentials(request, { allow: ["user"] });
+
+      const { source, sourceKey } = request.params;
+      if (!isIdentitySource(source)) {
+        throw new InputError("`source` must be one of vcs, wakatime, jira or confluence");
+      }
+
+      await options.exclusions.include({ source, sourceKey });
       response.status(204).end();
     },
   );

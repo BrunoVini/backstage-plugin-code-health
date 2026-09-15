@@ -1,4 +1,5 @@
 import type {
+  ExclusionReason,
   IdentityLinkOrigin,
   IdentitySource,
 } from "@rios0rios0/backstage-plugin-code-health-common";
@@ -40,6 +41,30 @@ export interface IdentityLinkRecord {
   /** The catalog user who made a manual link. Null for an automatic one. */
   readonly linkedBy: string | null;
   readonly linkedAt: Date;
+}
+
+/**
+ * A statement that an account is measured by nothing.
+ *
+ * Stored rather than acted on: the events, the snapshots and the per-source
+ * measures all stay exactly as they were collected, and the exclusion is
+ * applied when a row is built. Including an account again therefore restores
+ * every window the plugin has ever collected, instead of only the windows
+ * collected after somebody changed their mind — the same rule the link table
+ * follows, and for the same reason.
+ *
+ * Deleting the rows instead would be irreversible, would cost a full re-walk of
+ * the provider history to undo, and would take the repository counters down
+ * with it: a build service's pipeline runs are that repository's pipeline runs
+ * whoever triggered them.
+ */
+export interface IdentityExclusionRecord {
+  readonly source: IdentitySource;
+  readonly sourceKey: string;
+  readonly reason: ExclusionReason;
+  /** The catalog user who excluded the account. */
+  readonly excludedBy: string | null;
+  readonly excludedAt: Date;
 }
 
 export interface IdentityRef {

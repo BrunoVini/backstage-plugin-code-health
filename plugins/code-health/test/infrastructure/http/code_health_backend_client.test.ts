@@ -362,6 +362,53 @@ describe("CodeHealthBackendClient", () => {
       expect(fetchApi.calls[0]?.url).toContain("/identities/links/vcs/dev%40example.com");
     });
 
+    it("should ask for only the excluded accounts when the filter says so", async () => {
+      // given
+      const fetchApi = new StubFetchApi().withResponses({ body: { items: [] } });
+      const { client } = createClient(fetchApi);
+
+      // when
+      await client.listIdentities({ excluded: true });
+
+      // then
+      expect(fetchApi.queryOf(0).get("excluded")).toBe("true");
+    });
+
+    it("should PUT an exclusion, because excluding the same account twice means the same thing", async () => {
+      // given
+      const fetchApi = new StubFetchApi().withResponses({ status: 204 });
+      const { client } = createClient(fetchApi);
+
+      // when
+      await client.excludeIdentity({
+        source: "vcs",
+        sourceKey: "build-service",
+        reason: "service-account",
+      });
+
+      // then
+      expect(fetchApi.calls[0]?.method).toBe("PUT");
+      expect(fetchApi.calls[0]?.url).toContain("/v1/identities/exclusions");
+      expect(JSON.parse(fetchApi.calls[0]?.body ?? "{}")).toEqual({
+        source: "vcs",
+        sourceKey: "build-service",
+        reason: "service-account",
+      });
+    });
+
+    it("should encode an account key that is an address into the include path", async () => {
+      // given
+      const fetchApi = new StubFetchApi().withResponses({ status: 204 });
+      const { client } = createClient(fetchApi);
+
+      // when
+      await client.includeIdentity({ source: "vcs", sourceKey: "dev@example.com" });
+
+      // then
+      expect(fetchApi.calls[0]?.method).toBe("DELETE");
+      expect(fetchApi.calls[0]?.url).toContain("/identities/exclusions/vcs/dev%40example.com");
+    });
+
     it("should surface the backend's own message when a link is refused", async () => {
       // given
       const fetchApi = new StubFetchApi().withResponses({

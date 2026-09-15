@@ -70,6 +70,21 @@ export interface LinkIdentityRequest {
   readonly entityRef: string;
 }
 
+/**
+ * Takes an account out of every measurement the plugin makes.
+ *
+ * The reason is required rather than optional. A row vanishing from every
+ * table is the largest effect anything on this screen has, and the only thing
+ * that makes it reviewable later is the sentence saying why — so there is no
+ * shape of this request that omits one.
+ */
+export interface ExcludeIdentityRequest {
+  readonly source: string;
+  readonly sourceKey: string;
+  /** One of {@link ExclusionReason}. */
+  readonly reason: string;
+}
+
 export interface RefreshResponse {
   /** Scheduler task ids that were triggered. */
   readonly triggered: readonly string[];

@@ -48,6 +48,7 @@ rather than showing an empty dashboard.
 - **Catalog links**: repository rows and contributors link through to their catalog entity, and a contributor matched to a `User` shows that entity's name and picture
 - **Sonar integration** through the community `sonarqube` backend plugin, so its token stays where that plugin already keeps it
 - **One row per person, not per account**: commits arrive under a commit e-mail or a login, coding time under a WakaTime username, tickets under an Atlassian account id. The **Identities** tab links them, so a contributor row adds up — and because links are applied when a row is built, correcting one fixes last March's numbers too
+- **Not every account is a person being measured**: a build service, a bot, an outside contributor to a public repository, somebody who has left. Exclude one from the Identities tab, under one of four reasons, and it leaves every figure the plugin reports — the contributors table, both detail pages, the repository counters, the fleet cadence, and the fleet totals everybody's output is scored against. Nothing is deleted, so measuring it again restores every window already collected
 - **WakaTime integration**: coding time, active days, language and editor breakdowns, branches touched, files opened, and — where WakaTime's editor plugins report them — **AI token counts and the share of lines written by AI rather than typed**. It is the only source here that measures effort rather than output, and the only one that can see the difference between a line typed and a line accepted from a completion
 - **Jira integration**: tickets created and closed, interactions, story points estimated and finished, cycle and lead time, throughput, bug ratio, rework, and the open backlog by priority and age
 - **Confluence integration**: pages created and edited, words written, comments, attachments, spaces contributed to, stale-page counts, and page views on Premium sites. One Atlassian credential lights up both products
@@ -97,7 +98,7 @@ sidebar entry; an app that places nav items explicitly needs these extension IDs
 | `api:code-health/coverage` | How much history the backend holds |
 | `api:code-health/time-series` | Fleet activity over time, for the Insights charts |
 | `api:code-health/integrations` | Which optional integrations the backend was configured with |
-| `api:code-health/identities` | Every account seen, and which person it belongs to |
+| `api:code-health/identities` | Every account seen, which person it belongs to, and which are measured |
 | `api:code-health/trends` | One person's or one repository's history, for the detail pages |
 | `api:code-health/ownership` | The repositories a person owns through the catalog |
 | `api:code-health/administration` | What the caller may do beyond reading, and the reset itself |
@@ -281,6 +282,48 @@ Links are applied when a row is built rather than when a measurement is taken, s
 retroactive across every window the plugin has ever collected. An account nobody has linked keeps a
 row of its own — hiding it would hide every bot, every service account, and everybody nobody has got
 round to linking, which are exactly the rows that show the work is not finished.
+
+The screen opens on those unlinked accounts, because they are the only ones that need anything done
+to them. A switch widens it to every account, a second filter narrows it to the excluded ones, and a
+source filter narrows it to one system.
+
+#### Excluding an account from the measuring system
+
+Some of those rows are never going to be a person. Each one carries an **Exclude** button offering
+four reasons, one of which has to be picked:
+
+| Reason | What it means |
+|---|---|
+| Former contributor | Somebody who has left. Their work stays in the database, and stops counting towards anybody's figures |
+| Open source contributor | An outside contributor to a public repository, who is not a member of the organisation being measured |
+| Automated bot | A bot that commits, opens pull requests or votes on them under its own account |
+| Service or system account | An identity the platform itself acts as — an Azure DevOps build service, a deployment principal |
+
+An excluded account leaves **every figure that measures a person**: its contributor row disappears
+rather than reading zero, its commits, pull requests and reviews stop counting towards the
+repository counters and the fleet delivery cadence, its coding time comes off the repositories it
+was logged against, and — the reason this matters most — it stops setting the fleet reference that
+commits, merged pull requests, churn and reviews are scored against. An automation merging two
+hundred pull requests a month is otherwise the bar every human on the team is measured by.
+
+What it does **not** do is take the repository's machinery down with it. A build, a release and a
+tag are facts about the repository that happen to carry whoever triggered them, so they stay in its
+counters with nobody credited for them. Otherwise a platform excluding its own build service would
+report "no build reached a verdict" for every repository whose pipelines are scheduled, release or
+deployment runs, and a tenth of the repository health weight would quietly redistribute itself
+fleet-wide. Excluding an account changes who is credited; it never makes a repository look like it
+has no CI.
+
+The exclusion is a statement about a **person**, recorded on the account it was made from. Excluding
+one account of somebody the link table says is one human excludes all of their accounts, so a
+leaver's coding time goes with their commits instead of leaving a row holding a third of a story.
+An account that inherited an exclusion says which account carries it, because only that row can undo
+it.
+
+Nothing is deleted. The events, the snapshots and the per-source measures stay exactly as they were
+collected, and the exclusion is applied when a row is built — so **Measure again** restores every
+window the plugin has ever collected, not just the ones collected afterwards. The reason, and who
+recorded it, are stored so the decision is reviewable months later.
 
 ### Who a commit, a build and a review belong to
 
@@ -557,10 +600,12 @@ the actor walks the history again at whatever rate the providers allow. Until it
 dashboards answer for the last day only and wider ranges unlock as it advances — the same
 **Collecting history** bar that shows after installation comes back while it runs.
 
-What a reset keeps: releases, tags, the daily snapshots (Sonar, compliance and README badges) and
-every identity link. The snapshots because no provider can say what they looked like last March, so
-discarding them would lose them for good; the links because they are a statement a person made
-rather than something a provider reported.
+What a reset keeps: releases, tags, the daily snapshots (Sonar, compliance and README badges), every
+identity link and every exclusion. The snapshots because no provider can say what they looked like
+last March, so discarding them would lose them for good; the links and the exclusions because they
+are statements a person made rather than anything a provider reported — and because a reset that
+quietly put every build service back into the figures would undo the work it looks least like
+undoing.
 
 | Route | Answers |
 |---|---|
@@ -597,8 +642,9 @@ The whole API, under `/api/code-health/v1`:
 | `GET /timeseries` | fleet activity, bucketed by day, week or month |
 | `GET /coverage` | how far the backfill has got, and what is failing |
 | `GET /capabilities` | which optional integrations the backend was configured with |
-| `GET /identities` | every account seen, and which person it resolved to |
+| `GET /identities` | every account seen, which person it resolved to, and why it is not measured |
 | `PUT /identities/links` · `DELETE /identities/links/:source/:key` | attach an account to a catalog `User`, or detach it |
+| `PUT /identities/exclusions` · `DELETE /identities/exclusions/:source/:key` | take an account out of every measurement under a named reason, or put it back |
 | `GET /contributors/:key/trend` | one person's history, bucketed, with the score for each bucket |
 | `GET /contributors/:key/repositories` | the repositories that person owns through the catalog |
 | `GET /repositories/:id/trend` | one repository's history, bucketed, with the score for each bucket |

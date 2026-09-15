@@ -6,6 +6,7 @@ import type {
 import type { CodeHealthEvent } from "../entities/code_health_event";
 import type { Day } from "../entities/day";
 import type {
+  IdentityExclusionRecord,
   IdentityLinkRecord,
   IdentityRecord,
   IdentityRef,
@@ -178,6 +179,22 @@ export interface CodeHealthStore {
   saveIdentityLink(link: IdentityLinkRecord): Promise<void>;
 
   deleteIdentityLink(identity: IdentityRef): Promise<void>;
+
+  listIdentityExclusions(): Promise<IdentityExclusionRecord[]>;
+
+  /**
+   * Takes an account out of every measurement, or replaces the reason on one
+   * that is already out.
+   *
+   * Nothing stored is deleted. The events, the snapshots and the per-source
+   * measures stay exactly as they were collected and the exclusion is applied
+   * when a row is built, which is what makes {@link deleteIdentityExclusion}
+   * restore every window ever collected rather than only the ones collected
+   * after somebody changed their mind.
+   */
+  saveIdentityExclusion(exclusion: IdentityExclusionRecord): Promise<void>;
+
+  deleteIdentityExclusion(identity: IdentityRef): Promise<void>;
 
   /** Most recent snapshot at or before `day`, per repository. */
   listLatestSnapshots(options: {

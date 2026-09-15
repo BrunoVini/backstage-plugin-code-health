@@ -22,7 +22,7 @@ import {
   zeroContributorSummary,
 } from "../entities/contributor_aggregation";
 import { startOfDay, toDay, type Day } from "../entities/day";
-import { PersonDirectory } from "../entities/person_directory";
+import { loadPersonDirectory } from "../entities/person_directory";
 import type { RepositorySnapshot } from "../entities/repository_snapshot";
 import type {
   CodeHealthStore,
@@ -142,8 +142,7 @@ export class GetContributorTrend {
       confluenceRows,
       baseline,
       rangeSnapshots,
-      links,
-      identities,
+      people,
     ] = await Promise.all([
       this.options.store.listEvents({ from: input.from, to: input.to }),
       this.options.store.listContributorMetrics<WakaTimeMetrics>({
@@ -166,11 +165,9 @@ export class GetContributorTrend {
       }),
       this.options.store.listLatestSnapshots({ day: from }),
       this.options.store.listSnapshots({ from, to }),
-      this.options.store.listIdentityLinks(),
-      this.options.store.listIdentities(),
+      loadPersonDirectory(this.options.store),
     ]);
 
-    const people = new PersonDirectory({ links, identities });
     const sonar = sonarTimeline(baseline, rangeSnapshots);
 
     const wholeWindow = accumulateContributors({

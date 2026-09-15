@@ -1,4 +1,5 @@
 import type {
+  ExclusionReason,
   IdentityRow,
   IdentitySource,
   IdentitySuggestion,
@@ -18,6 +19,7 @@ export class IdentityRowBuilder {
     },
     link: null,
     suggestions: [],
+    exclusion: null,
   };
 
   static create(): IdentityRowBuilder {
@@ -65,6 +67,30 @@ export class IdentityRowBuilder {
         reason: "same display name",
         ...suggestion,
       })),
+    };
+    return this;
+  }
+
+  /**
+   * Excluded, by default on its own account.
+   *
+   * `on` names a different account for the inherited case — an exclusion made
+   * on one account of a linked person, which every other account of that person
+   * then carries without being the row that can undo it.
+   */
+  excludedAs(
+    reason: ExclusionReason,
+    on?: { source: IdentitySource; sourceKey: string },
+  ): this {
+    this.row = {
+      ...this.row,
+      exclusion: {
+        source: on?.source ?? this.row.identity.source,
+        sourceKey: on?.sourceKey ?? this.row.identity.sourceKey,
+        reason,
+        excludedBy: "user:default/admin",
+        excludedAt: "2026-09-15T12:00:00.000Z",
+      },
     };
     return this;
   }
