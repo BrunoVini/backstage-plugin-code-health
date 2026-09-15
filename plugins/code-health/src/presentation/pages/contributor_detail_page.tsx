@@ -95,7 +95,7 @@ const SONAR_CAVEAT =
  * reliability means the same thing whoever else is on the team.
  */
 const PRODUCTIVITY_SUBHEADER =
-  "Output — commits, merged pull requests, churn and reviews — is read as a rate: the totals below divided by the days this range spans, each against the team's average rate over the same period, with twice that average scoring full marks. A quiet month for the whole team is then a quiet month rather than everybody's failure, and somebody who joined halfway through the range is not penalised for the half they were not here. Reliability and quality — the pipeline success rate, and the gate and coverage of the code touched — are absolute. Anything that could not be measured is left out rather than scored as zero, and the weight below says how much of the score survived.";
+  "Output — commits, merged pull requests, churn and reviews — is read as a rate: the totals below divided by the days this range spans, each against the team's average rate over the same period, with twice that average scoring full marks. A quiet month for the whole team is then a quiet month rather than everybody's failure. The denominator is the range rather than the days this person was active, so these are figures per elapsed day: a mid-range start or a fortnight of leave lowers them. Reliability and quality — the pipeline success rate, and the gate and coverage of the code touched — are absolute. Anything that could not be measured is left out rather than scored as zero, and the weight below says how much of the score survived.";
 
 /**
  * What the configured integrations add to the reading above.

@@ -1,4 +1,5 @@
 import type {
+  EntityProfile,
   RepositorySummary,
   WakaTimeMetrics,
 } from "@rios0rios0/backstage-plugin-code-health-common";
@@ -28,6 +29,29 @@ export const groupEventsByRepository = (
     else byRepository.set(event.repositoryId, [event]);
   }
   return byRepository;
+};
+
+/**
+ * The owning entities' names and photographs, or nothing at all.
+ *
+ * A catalog that is briefly unreachable degrades to slugs rather than failing
+ * the whole response. Every other field on these rows came out of this
+ * plugin's own database and is already in hand; refusing to render two hundred
+ * repositories because a decoration could not be fetched trades a complete
+ * answer for no answer. It is the same rule the owner column already follows
+ * for an entity the catalog does not hold — a row with no photograph, not a
+ * broken request.
+ */
+export const resolveOwnerProfiles = async (
+  catalog: Pick<CatalogReader, "getEntityProfiles"> | undefined,
+  entityRefs: readonly string[],
+): Promise<ReadonlyMap<string, EntityProfile>> => {
+  if (catalog === undefined || entityRefs.length === 0) return new Map();
+  try {
+    return await catalog.getEntityProfiles(entityRefs);
+  } catch {
+    return new Map();
+  }
 };
 
 /** The distinct owners of a tracked set — a team list, not a directory. */
@@ -92,10 +116,10 @@ export class ListRepositorySummaries {
     // by the rows: two hundred repositories in an organisation share a handful
     // of teams, and a lookup per row would be two hundred catalog queries per
     // dashboard load.
-    const ownerProfiles =
-      this.catalog === undefined
-        ? new Map()
-        : await this.catalog.getEntityProfiles(distinctOwnerRefs(tracked));
+    const ownerProfiles = await resolveOwnerProfiles(
+      this.catalog,
+      distinctOwnerRefs(tracked),
+    );
 
     const wakaTimeByProject = aggregateWakaTimeProjects(
       measuredContributorMetrics(wakaTimeRows, people, "wakatime"),

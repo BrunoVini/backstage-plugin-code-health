@@ -12,6 +12,7 @@ import { DiscoveredRepositoryBuilder } from "../../builders/discovered_repositor
 import { EventBuilder } from "../../builders/event_builder";
 import { WakaTimeMetricsBuilder } from "../../builders/wakatime_metrics_builder";
 import { InMemoryCodeHealthStore } from "../../doubles/in_memory_code_health_store";
+import { StubCatalogReader } from "../../doubles/stub_catalog_reader";
 import { StubDirectoryReader } from "../../doubles/stub_directory_reader";
 
 const NOW = new Date("2026-08-10T12:00:00.000Z");
@@ -562,6 +563,39 @@ describe("GetContributorTrend", () => {
 
     // then
     expect(directory.refLookups).toEqual([]);
+  });
+});
+
+describe("GetRepositoryTrend owner profiles", () => {
+  it("should still render the trend when the catalog cannot be reached", async () => {
+    // given
+    // Every figure on this page came out of the plugin's own database and is
+    // already in hand; a decoration that could not be fetched must not take
+    // the whole trend down with it.
+    const { store, discovered } = await seed();
+    const [repository] = discovered;
+    await store.syncRepositories({
+      discovered: [
+        {
+          ...repository!,
+          catalogFacts: { ...repository!.catalogFacts, ownerRef: "group:default/platform" },
+        },
+      ],
+      retentionDays: 365,
+      now: NOW,
+    });
+    const catalog = new StubCatalogReader().withFailure(new Error("catalog is down"));
+
+    // when
+    const trend = await new GetRepositoryTrend(store, catalog).run({
+      repositoryId: repository!.id,
+      ...WINDOW,
+      bucket: "day",
+    });
+
+    // then
+    expect(trend.summary.ownerRef).toBe("group:default/platform");
+    expect(trend.summary.ownerProfile).toBeNull();
   });
 });
 

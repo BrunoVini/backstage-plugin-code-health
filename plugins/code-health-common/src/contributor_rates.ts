@@ -59,12 +59,16 @@ export interface ContributorRateSet {
 /**
  * Somebody's output as a rate, over each period a reader thinks in.
  *
- * A window total answers "how much in these three months", which is not a
- * figure anybody can compare against a colleague who joined in the second
- * month or was on leave for the first. Dividing by the days the window spans
- * gives a figure that means the same thing whatever range is picked — and it
- * is what the productivity score reads, so the number on the card and the
- * number behind the score cannot disagree.
+ * A window total answers "how much in these three months", which is only
+ * comparable against another three months. Dividing by the days the window
+ * spans gives a figure that means the same thing whatever range is picked —
+ * and it is what the productivity score reads, so the number on the card and
+ * the number behind the score cannot disagree.
+ *
+ * The denominator is the window, not the days the person was active, so these
+ * are output per *elapsed* day rather than per working day: a fortnight of
+ * leave inside the range lowers every figure here, and is meant to. Nothing in
+ * this module corrects for tenure or absence.
  *
  * `documentationContributions` is the exception the rest of the plugin already
  * makes for Confluence: it is stored per trailing window rather than per day,

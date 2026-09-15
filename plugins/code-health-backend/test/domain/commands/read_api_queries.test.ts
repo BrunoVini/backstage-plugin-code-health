@@ -128,6 +128,29 @@ describe("ListRepositorySummaries owner profiles", () => {
     expect(summary?.ownerProfile).toBeNull();
   });
 
+  it("should render slugs rather than failing when the catalog is unreachable", async () => {
+    // given
+    // Every other field on these rows came out of this plugin's own database
+    // and is already in hand; refusing to render two hundred repositories
+    // because a decoration could not be fetched trades a complete answer for
+    // no answer.
+    const { store, discovered } = await seed(1);
+    const [repository] = discovered;
+    await store.syncRepositories({
+      discovered: [{ ...repository!, catalogFacts: { ...repository!.catalogFacts, ownerRef: "group:default/platform" } }],
+      retentionDays: 365,
+      now: NOW,
+    });
+    const catalog = new StubCatalogReader().withFailure(new Error("catalog is down"));
+
+    // when
+    const [summary] = await new ListRepositorySummaries(store, catalog).run(WINDOW);
+
+    // then
+    expect(summary?.ownerRef).toBe("group:default/platform");
+    expect(summary?.ownerProfile).toBeNull();
+  });
+
   it("should render slugs rather than failing when no catalog is wired in", async () => {
     // given
     const { store } = await seed(1);

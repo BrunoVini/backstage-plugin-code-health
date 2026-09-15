@@ -37,12 +37,20 @@ import { formatDuration } from "./wakatime_metrics";
  *   with the team scores half, doubling it scores full, and one outlier moves
  *   the reference by a fraction of its own size instead of setting it outright.
  *
- *   A rate, not a total, because a total answers "how much in these three
- *   months" — which is not comparable between somebody who was there for all
- *   of it and somebody who joined in the second month. The division cancels
- *   out of the comparison itself, so the score is the same number either way;
- *   what it buys is that every sentence explaining it reads in figures that
- *   mean the same thing whatever range was picked.
+ *   A rate, not a total, so that every figure means the same thing whatever
+ *   range was picked: "0.8 commits a day" is comparable with last quarter's
+ *   reading, where "12 commits" is only comparable against another twelve
+ *   weeks. The division cancels out of the comparison itself, so the score is
+ *   the same number either way — what it buys is the wording and the Averages
+ *   card, not a different result.
+ *
+ *   It does **not** correct for tenure or absence, and must not be described as
+ *   though it did. Everybody is divided by the same window, so somebody who
+ *   joined halfway through it carries half the total and half the rate, and
+ *   scores half of a colleague who worked at the same pace throughout. Only a
+ *   per-person denominator — the days that person was actually active — would
+ *   remove that, and it brings its own distortion: one day worked and two
+ *   commits made would read as twice as productive as a steady month.
  * - **Reliability and quality are absolute.** A pipeline success rate, a
  *   quality gate, and the share of somebody's resolved tickets that stayed
  *   resolved mean the same thing whoever else is on the team.

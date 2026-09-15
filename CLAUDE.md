@@ -346,10 +346,14 @@ The wire contract, and the pure functions both sides have to agree on.
   half, doubling it scores full, and an outlier moves the reference by its share of the headcount
   rather than setting it outright.
 
-  **A rate, not a total**, because a total is not comparable between somebody who was there for the
-  whole window and somebody who joined halfway through it. The division cancels out of the ratio, so
-  the score is the same number either way; what it buys is that every sentence explaining it — and
-  the Averages card under it — reads in figures that mean the same thing whatever range was picked.
+  **A rate, not a total**, so every figure means the same thing whatever range was picked. The
+  division cancels out of the ratio, so the score is the same number either way; what it buys is the
+  wording and the Averages card, not a different result. It does **not** correct for tenure or
+  absence and must never be described as though it did: everybody is divided by the same window, so
+  somebody who joined halfway through it scores half of a colleague who worked at the same pace
+  throughout. Only a per-person active-day denominator would remove that, and it was weighed and
+  rejected — one day worked and two commits made would read as twice as productive as a steady
+  month.
   `FleetReference` therefore carries the window's `days` alongside the rates, because a rate
   separated from its period is a number nobody can check. The mean skips rows the component was
   never measured on rather than counting them as zeros: a maximum ignores a wrong zero, a mean is

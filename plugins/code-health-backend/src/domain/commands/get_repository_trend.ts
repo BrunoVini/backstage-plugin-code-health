@@ -29,6 +29,7 @@ import type {
   ContributorMetricRow,
 } from "../repositories/code_health_store";
 import type { CatalogReader } from "../services/catalog_reader";
+import { resolveOwnerProfiles } from "./list_repository_summaries";
 
 export interface RepositoryTrend {
   readonly summary: RepositorySummary;
@@ -150,12 +151,15 @@ export class GetRepositoryTrend {
     const snapshotAt = snapshotTimeline(baseline, rangeSnapshots);
 
     // One reference, so one lookup — and resolved once for the whole page
-    // rather than per bucket, where the answer could not differ.
+    // rather than per bucket, where the answer could not differ. Through the
+    // table's own resolver, so an unreachable catalog degrades to the slug here
+    // too rather than failing a trend whose every other figure is already in
+    // hand.
     const ownerRef = repository.catalogFacts.ownerRef;
-    const ownerProfiles =
-      this.catalog === undefined || ownerRef === null
-        ? new Map()
-        : await this.catalog.getEntityProfiles([ownerRef]);
+    const ownerProfiles = await resolveOwnerProfiles(
+      this.catalog,
+      ownerRef === null ? [] : [ownerRef],
+    );
 
     const rowFor = (
       day: Day,

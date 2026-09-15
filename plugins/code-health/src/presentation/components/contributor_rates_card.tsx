@@ -89,13 +89,17 @@ export interface ContributorRatesCardProps {
 /**
  * What this person does in a day, a week and a month.
  *
- * A window total answers "how much in these three months", which nobody can
- * compare against a colleague who joined in the second month or was on leave
- * for the first. These are the same totals divided by the days the window
- * spans, which is exactly what the productivity score above reads — so the
- * figures here and the sentences behind that score are the same arithmetic,
- * and a reader who disagrees with the score can see which row they disagree
- * with.
+ * A window total answers "how much in these three months", which is only
+ * comparable against another three months. These are the same totals divided
+ * by the days the window spans, which is exactly what the productivity score
+ * above reads — so the figures here and the sentences behind that score are the
+ * same arithmetic, and a reader who disagrees with the score can see which row
+ * they disagree with.
+ *
+ * The denominator is the window rather than the days this person was active, so
+ * every figure is output per *elapsed* day. A fortnight of leave inside the
+ * range lowers all of them, and the caption says so: a reader comparing two
+ * people has to know which of the two questions these answer.
  *
  * An em dash where a figure was never measured, never a zero: a provider that
  * reports no line counts has not reported a churn of nothing.
@@ -121,7 +125,8 @@ export const ContributorRatesCard = ({
       <Typography variant="body2" color="textSecondary">
         The same totals divided by the {formatRate(days)} days this range spans. The
         productivity score reads these rates, each against the team&apos;s average rate for
-        the same period.
+        the same period. The divisor is the range, not the days this person was active, so
+        leave or a mid-range start lowers every figure here.
       </Typography>
 
       <Box mt={2}>
