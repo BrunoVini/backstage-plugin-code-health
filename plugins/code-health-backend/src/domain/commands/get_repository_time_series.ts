@@ -19,9 +19,12 @@ export class GetRepositoryTimeSeries {
    * Buckets with no events are still emitted, so a chart shows a gap as a zero
    * rather than closing over it and implying activity that never happened.
    *
-   * Excluded accounts are dropped before anything is counted. A fleet's
-   * delivery cadence is a statement about what the team shipped, and a build
-   * service merging its own pull requests all weekend is not part of it.
+   * An excluded account's commits, pull requests and reviews are dropped before
+   * anything is counted. A fleet's delivery cadence is a statement about what
+   * the team shipped, and a build service merging its own pull requests all
+   * weekend is not part of it. Its builds, releases and tags still count, and
+   * still move their lines here — those are the repository's, whoever
+   * triggered them, and `measuredEvents` only strips the credit.
    */
   async run(input: {
     /** Omit to aggregate every tracked repository into one series. */
