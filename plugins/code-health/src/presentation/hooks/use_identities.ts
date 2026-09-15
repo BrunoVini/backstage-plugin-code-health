@@ -1,4 +1,5 @@
 import type {
+  ExclusionReason,
   IdentityRow,
   IdentitySource,
 } from "@rios0rios0/backstage-plugin-code-health-common";
@@ -20,6 +21,15 @@ export interface UseIdentitiesResult {
     source: IdentitySource;
     sourceKey: string;
   }) => Promise<boolean>;
+  readonly exclude: (exclusion: {
+    source: IdentitySource;
+    sourceKey: string;
+    reason: ExclusionReason;
+  }) => Promise<boolean>;
+  readonly include: (identity: {
+    source: IdentitySource;
+    sourceKey: string;
+  }) => Promise<boolean>;
   readonly refetch: () => Promise<void>;
 }
 
@@ -27,24 +37,25 @@ const messageOf = (caught: unknown): string =>
   caught instanceof Error ? caught.message : String(caught);
 
 /**
- * The Identities screen's data, and the two writes it makes.
+ * The Identities screen's data, and the four writes it makes.
  *
- * Both writes reload the listing rather than patching the row in place. A link
- * changes more than the row it was made on — the suggestions on every other row
- * were computed against a directory one of whose people is now taken — and
- * reconciling that in the browser would be a second implementation of a rule
- * the backend already owns.
+ * Every write reloads the listing rather than patching the row in place. A
+ * write changes more than the row it was made on — the suggestions on every
+ * other row were computed against a directory one of whose people is now taken,
+ * and an exclusion reaches every other account of the same person — and
+ * reconciling that in the browser would be a second implementation of rules the
+ * backend already owns.
  */
 export const useIdentities = (
   service: IdentityService,
-  filter: { sources?: readonly IdentitySource[]; linked?: boolean },
+  filter: { sources?: readonly IdentitySource[]; linked?: boolean; excluded?: boolean },
 ): UseIdentitiesResult => {
   const [identities, setIdentities] = useState<IdentityRow[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [writeError, setWriteError] = useState<string | null>(null);
 
-  const { linked } = filter;
+  const { linked, excluded } = filter;
   // The sources are compared as a string rather than by reference. A caller
   // passing an inline array — which is the obvious way to call this — builds a
   // new array on every render, and a dependency on the array itself would
@@ -71,6 +82,7 @@ export const useIdentities = (
       const items = await service.listIdentities({
         ...(sources === undefined ? {} : { sources }),
         ...(linked === undefined ? {} : { linked }),
+        ...(excluded === undefined ? {} : { excluded }),
       });
       if (requestId.current !== current) return;
       setIdentities(items);
@@ -80,7 +92,7 @@ export const useIdentities = (
     } finally {
       if (requestId.current === current) setIsLoading(false);
     }
-  }, [service, sourceKey, linked]);
+  }, [service, sourceKey, linked, excluded]);
 
   useEffect(() => {
     void fetchIdentities();
@@ -113,5 +125,27 @@ export const useIdentities = (
     [service, write],
   );
 
-  return { identities, isLoading, error, writeError, link, unlink, refetch: fetchIdentities };
+  const exclude = useCallback(
+    (target: { source: IdentitySource; sourceKey: string; reason: ExclusionReason }) =>
+      write(() => service.excludeIdentity(target)),
+    [service, write],
+  );
+
+  const include = useCallback(
+    (target: { source: IdentitySource; sourceKey: string }) =>
+      write(() => service.includeIdentity(target)),
+    [service, write],
+  );
+
+  return {
+    identities,
+    isLoading,
+    error,
+    writeError,
+    link,
+    unlink,
+    exclude,
+    include,
+    refetch: fetchIdentities,
+  };
 };

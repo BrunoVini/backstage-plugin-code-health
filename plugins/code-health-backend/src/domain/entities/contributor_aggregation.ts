@@ -300,6 +300,11 @@ export interface ContributorAggregationInput {
  * A person with coding time and no commits is a real row too, not an empty one:
  * a week spent in an editor without a single commit is worth seeing.
  *
+ * An account somebody has excluded is the one thing that gets no row: a build
+ * service, a bot, an outside contributor, a leaver. That is decided by the
+ * directory rather than here, so the same rule applies to all four sources and
+ * reaches every account of a person whose other account was the one excluded.
+ *
  * Split from {@link aggregateContributorSummaries} because the catalog lookup
  * that names the rows can only be bounded by who turned up, and that is not
  * known until the accumulation is done.
@@ -309,7 +314,13 @@ export const accumulateContributors = (
 ): Map<string, ContributorTotals> => {
   const byPerson = new Map<string, ContributorTotals>();
 
-  const totalsFor = (identity: IdentityRef): ContributorTotals => {
+  const totalsFor = (identity: IdentityRef): ContributorTotals | undefined => {
+    // An excluded account accumulates nothing at all — not a zeroed row, no
+    // row. A row of zeros would still be a name on the contributors table, and
+    // it would still take part in the fleet reference every relative score is
+    // read against, which is most of the reason for excluding anything.
+    if (!input.people.isMeasured(identity)) return undefined;
+
     const key = input.people.keyOf(identity);
     const existing = byPerson.get(key) ?? empty();
     byPerson.set(key, existing);
@@ -328,6 +339,7 @@ export const accumulateContributors = (
       sourceKey: normalizeSourceKey(event.actorKey),
     };
     const totals = totalsFor(identity);
+    if (totals === undefined) continue;
     remember(totals, identity, event.actorName);
     applyEvent(totals, event);
   }

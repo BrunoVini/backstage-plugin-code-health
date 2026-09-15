@@ -1487,6 +1487,57 @@ describe("KnexCodeHealthStore", () => {
       expect(stored?.origin).toBe("manual");
     });
 
+    it("should store, replace and remove an exclusion", async () => {
+      // given
+      const store = await createStore();
+      const exclusion = {
+        source: "vcs",
+        sourceKey: "build-service",
+        reason: "automated-bot",
+        excludedBy: "user:default/admin",
+        excludedAt: NOW,
+      } as const;
+
+      // when
+      await store.saveIdentityExclusion(exclusion);
+      // Re-excluding under a different reason is a correction to the one answer
+      // rather than a second exclusion.
+      await store.saveIdentityExclusion({ ...exclusion, reason: "service-account" });
+
+      // then
+      const stored = await store.listIdentityExclusions();
+      expect(stored).toHaveLength(1);
+      expect(stored[0]?.reason).toBe("service-account");
+      expect(stored[0]?.excludedBy).toBe("user:default/admin");
+      expect(stored[0]?.excludedAt).toEqual(NOW);
+
+      // when
+      await store.deleteIdentityExclusion({ source: "vcs", sourceKey: "build-service" });
+
+      // then
+      expect(await store.listIdentityExclusions()).toEqual([]);
+    });
+
+    it("should keep an exclusion for an account with no link at all", async () => {
+      // given
+      // Every bot and every build service is exactly this shape, and a foreign
+      // key onto the link table would have made it impossible to record.
+      const store = await createStore();
+
+      // when
+      await store.saveIdentityExclusion({
+        source: "vcs",
+        sourceKey: "ghost@nowhere",
+        reason: "former-contributor",
+        excludedBy: null,
+        excludedAt: NOW,
+      });
+
+      // then
+      expect(await store.listIdentityExclusions()).toHaveLength(1);
+      expect(await store.listIdentityLinks()).toEqual([]);
+    });
+
     it("should let a manual link replace an automatic one", async () => {
       // given
       // The correction has to be possible in that direction, or the screen can

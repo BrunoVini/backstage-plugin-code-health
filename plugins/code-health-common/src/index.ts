@@ -9,6 +9,7 @@
 
 export { CODE_HEALTH_API_VERSION, CODE_HEALTH_PLUGIN_ID } from "./api";
 export type {
+  ExcludeIdentityRequest,
   GetAccessResponse,
   GetCapabilitiesResponse,
   GetContributorTrendResponse,
@@ -49,6 +50,7 @@ export {
 export type {
   ContributorIdentity,
   DirectoryUser,
+  IdentityExclusion,
   IdentityLink,
   IdentityLinkOrigin,
   IdentityRow,
@@ -56,6 +58,14 @@ export type {
   IdentitySuggestion,
   ObservedIdentity,
 } from "./identity";
+
+export {
+  EXCLUSION_REASON_DESCRIPTIONS,
+  EXCLUSION_REASON_LABELS,
+  EXCLUSION_REASONS,
+  isExclusionReason,
+} from "./identity_exclusion";
+export type { ExclusionReason } from "./identity_exclusion";
 
 export {
   API_SERVING_TYPES,

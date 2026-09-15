@@ -1,3 +1,5 @@
+import type { ExclusionReason } from "./identity_exclusion";
+
 /**
  * Where an identity was observed.
  *
@@ -63,6 +65,24 @@ export interface ObservedIdentity {
   readonly lastSeenAt: string;
 }
 
+/**
+ * An account excluded from every measurement, and why.
+ *
+ * `source` and `sourceKey` name the account the exclusion was *recorded* on,
+ * which is not always the account carrying it: an exclusion is a statement
+ * about a person, so it reaches every account linked to the same catalog user.
+ * A row that inherited one therefore says whose decision it was, rather than
+ * offering an "include" button that would undo nothing.
+ */
+export interface IdentityExclusion {
+  readonly source: IdentitySource;
+  readonly sourceKey: string;
+  readonly reason: ExclusionReason;
+  /** The catalog user who excluded the account. */
+  readonly excludedBy: string | null;
+  readonly excludedAt: string;
+}
+
 /** A catalog user the plugin can offer as the other half of a link. */
 export interface DirectoryUser {
   readonly entityRef: string;
@@ -83,6 +103,15 @@ export interface IdentityRow {
   readonly identity: ObservedIdentity;
   readonly link: IdentityLink | null;
   readonly suggestions: readonly IdentitySuggestion[];
+  /**
+   * Why this account is measured by nothing, or null while it still is.
+   *
+   * Carried on the row rather than left to be inferred from an absent
+   * contributor row: an excluded account is missing from every table in the
+   * plugin, and this screen is the only place that can say it was excluded
+   * rather than never seen.
+   */
+  readonly exclusion: IdentityExclusion | null;
 }
 
 /** The identities that were merged into one contributor row. */

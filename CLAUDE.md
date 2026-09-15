@@ -64,6 +64,7 @@ Hexagonal: `domain/` holds entities, commands and ports; `infrastructure/` holds
 | `migrations/20260810000000_init.js` | The whole schema, portable Knex only |
 | `migrations/20260825000000_catalog_facts.js` | The catalog-derived columns on the repository row that the documentation and API grades read, added by discovery |
 | `migrations/20260901000000_identities.js` | The person directory and the per-source measures table |
+| `migrations/20260915000000_identity_exclusions.js` | The accounts that are measured by nothing, and the reason each one was taken out |
 | `migrations/20260909000000_reattribute_merged_work.js` | Sends every tracked repository's cursors back to a fresh install and drops what the walk re-collects, because the rows before it credit the merger |
 | `src/domain/entities/merge_attribution.ts` | The one place merged work is credited to whoever did it: squash to the author, merge commit dropped, build to the author of what it built |
 | `src/infrastructure/repositories/knex_code_health_store.ts` | Persistence; commits events, fetched days and cursors in one transaction |
@@ -71,9 +72,10 @@ Hexagonal: `domain/` holds entities, commands and ports; `infrastructure/` holds
 | `src/domain/commands/discover_repositories.ts` | Catalog → tracked repositories |
 | `src/domain/commands/ingest_repository_history.ts` | The two-phase background actor |
 | `src/domain/commands/capture_repository_snapshots.ts` | Daily current-state capture, and every optional enricher's pass |
-| `src/domain/entities/person_directory.ts` | Which person an account belongs to, built per request from the link table |
+| `src/domain/entities/person_directory.ts` | Which person an account belongs to and whether that person is measured, built per request from the link and exclusion tables; `measuredEvents` and `loadPersonDirectory` are the one way every read applies both |
 | `src/domain/commands/reconcile_identities.ts` | The one automatic link: an account whose e-mail matches a catalog `User` |
-| `src/domain/commands/link_identity.ts` / `list_identities.ts` | The Identities screen's read and its two writes |
+| `src/domain/commands/link_identity.ts` / `list_identities.ts` | The Identities screen's read and its two linking writes |
+| `src/domain/commands/exclude_identity.ts` | The Identities screen's other two writes: taking an account out of every measurement under a named reason, and putting it back |
 | `src/domain/commands/get_contributor_trend.ts` / `get_repository_trend.ts` | One person's and one repository's history, bucketed, each bucket carrying the summary and the score it earns |
 | `src/domain/commands/list_owned_repositories.ts` | The repositories a person owns, through `spec.owner` and their group ancestry |
 | `src/domain/commands/reset_ingestion.ts` | Sends every tracked repository's cursors back over the reach asked for and drops what the walk re-collects |
@@ -98,9 +100,11 @@ Hexagonal: `domain/` holds entities, commands and ports; `infrastructure/` holds
 |---|---|
 | `src/plugin.ts` / `src/alpha.tsx` | Legacy and declarative entry points |
 | `src/main/apis.ts` / `src/main/api_refs.ts` | `createApiFactory` wiring; one stateless client behind nine data refs (repositories, contributors, coverage, time series, integrations, identities, trends, ownership, administration), plus a separate config ref |
+| `src/presentation/hooks/use_identities.ts` | The Identities screen's read and its four writes, each of which reloads the listing rather than patching a row |
 | `src/infrastructure/http/code_health_backend_client.ts` | The only thing the browser talks to |
 | `src/main/router.tsx` | Page composition, the backend-reachability gate and the capabilities probe; Insights is the root tab |
-| `src/presentation/pages/identities_page.tsx` | Attaching an account to a catalog `User` — the plugin's only write |
+| `src/presentation/pages/identities_page.tsx` | Attaching an account to a catalog `User`, and deciding whether it is measured at all — the plugin's only writes |
+| `src/presentation/components/identity_exclusion_cell.tsx` | The four reasons an account stops being measured, and the one row that can undo it |
 | `src/presentation/components/columns/` | One column-group factory per integration, called only when its flag is set |
 | `src/presentation/components/insights/` | Three card sets per integration — fleet, people, repositories — each gated on its flag; `detail_links.ts` is the one place a ranked row's link to a detail page is built |
 | `src/domain/entities/time_range.ts` | Which windows are offered, bounded by coverage — rolling ranges and calendar months |
@@ -133,6 +137,7 @@ The wire contract, and the pure functions both sides have to agree on.
 | `src/repository_health_score.ts` | The per-repository components, weights and decay constants |
 | `src/trend.ts` | The bucketed point shapes, `TREND_MONTHS`, and `trendBucketFor` — day up to 45 days, week beyond |
 | `src/ownership.ts` | `OwnershipInfo`, and `ownerEntityRef`, which normalises `spec.owner` exactly as the catalog does |
+| `src/identity_exclusion.ts` | The four reasons an account is not a person being measured, with the wording the menu and the chip are built from |
 
 ## Decisions worth not re-litigating
 
@@ -190,6 +195,49 @@ The wire contract, and the pure functions both sides have to agree on.
   ever collected. An account nobody has linked keys under `<source>:<sourceKey>` and keeps its own
   row — hiding it would hide every bot, every service account and everybody nobody has linked yet,
   which are exactly the rows that show the work is unfinished.
+- **An account nobody has linked is not always a person, and the ones that are not are excluded
+  rather than hidden.** A fleet carries build services, bots, outside contributors to public
+  repositories and people who left last year, and leaving them in is not merely untidy: output is
+  scored as a share of the top figure anybody recorded *in the same window*, so an automation that
+  merges two hundred pull requests a month is the bar every human on the team is then measured
+  against. `code_health_identity_exclusions` records `(source, source_key)` with one of four
+  reasons — former contributor, open source contributor, automated bot, service or system account —
+  and the reason is **required**, because a row disappearing from every table is only reviewable six
+  months later if the justification was recorded at the moment somebody decided. The four are a
+  closed set for the same reason; free text is not something anybody can audit.
+- **An exclusion is a statement about a person, recorded on the account it was made from.**
+  `PersonDirectory` keys it by person, so excluding one account of somebody the link table says is
+  one human excludes all of them — a leaver's coding time goes with their commits instead of leaving
+  a row holding a third of a story, which is the exact failure linking exists to remove. For an
+  account nobody has linked the person key *is* the account key, so a bot's exclusion touches
+  nothing else. A row that inherited one names the account carrying it and offers no undo, because
+  only the row that carries it has anything to undo.
+- **Excluded means excluded from everything, and an excluded account gets no row rather than a
+  zeroed one.** `accumulateContributors` drops it, so it never reaches `fleetReferenceOf`; a row of
+  zeros would still be a name on the contributors table and would still take part in the reference
+  everybody is scored against. `measuredEvents` drops its events before the repository counters, the
+  repository trend and the fleet cadence are built — a repository's contributor count is a count of
+  *people*, and delivery cadence is a statement about what the team shipped. Every read that turns
+  events into rows goes through `loadPersonDirectory(store)` and `measuredEvents`; a sixth read that
+  aggregates events without them would leave one view measuring a build service that every other
+  view has dropped.
+- **Excluding deletes nothing, so including again is retroactive.** The events, the snapshots and
+  the per-source measures stay exactly as they were collected and the exclusion is applied when the
+  row is built — the same rule the link table follows, and for the same reason. Deleting the rows
+  instead would be irreversible, would cost a full re-walk of the provider history to undo, and
+  would take the repository counters down with it: a build service's pipeline runs are that
+  repository's pipeline runs whoever triggered them. A reset keeps the exclusions, like the links.
+- **The Identities screen opens on the accounts nobody has linked.** Those are the only rows that
+  need anything done to them, and a fleet's accounts are overwhelmingly already linked — opening on
+  the full list means scrolling past ninety rows that need nothing to reach the nine that do.
+  Excluded rows are still listed, dimmed: they are the one kind of row that appears nowhere else in
+  the plugin, so hiding them here would leave a build service taken out of the figures with nothing
+  anywhere able to say it had been, and no way to put it back.
+- **A native `select` with a label needs `InputLabelProps={{ shrink: true }}`.** It always renders
+  whichever option is current, so Material UI reading its empty value as an empty field draws the
+  label straight across the option text — which is what put "Source" on top of "All sources" on the
+  Identities toolbar. Every `TextField select` with `SelectProps={{ native: true }}` and a `label`
+  carries the shrink.
 - **Only an e-mail match links automatically.** It is the same rule the catalog itself uses to
   decide who a `User` is. Everything weaker — a shared local part, an identical display name, a
   username resembling a name — is *offered* as a ranked suggestion and applied only when a person

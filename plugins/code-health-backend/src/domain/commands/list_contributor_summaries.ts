@@ -10,7 +10,7 @@ import {
   aggregateContributorSummaries,
 } from "../entities/contributor_aggregation";
 import { toDay } from "../entities/day";
-import { PersonDirectory } from "../entities/person_directory";
+import { loadPersonDirectory } from "../entities/person_directory";
 import type { RepositorySnapshot } from "../entities/repository_snapshot";
 import type { CodeHealthStore } from "../repositories/code_health_store";
 import type { CatalogReader } from "../services/catalog_reader";
@@ -52,7 +52,7 @@ export class ListContributorSummaries {
   }): Promise<ContributorSummary[]> {
     const day = toDay(input.to);
 
-    const [events, wakaTimeRows, jiraRows, confluenceRows, snapshots, links, identities] =
+    const [events, wakaTimeRows, jiraRows, confluenceRows, snapshots, people] =
       await Promise.all([
         this.options.store.listEvents({
           from: input.from,
@@ -81,11 +81,8 @@ export class ListContributorSummaries {
           day,
         }),
         this.options.store.listLatestSnapshots({ day }),
-        this.options.store.listIdentityLinks(),
-        this.options.store.listIdentities(),
+        loadPersonDirectory(this.options.store),
       ]);
-
-    const people = new PersonDirectory({ links, identities });
 
     const byPerson = accumulateContributors({
       events,

@@ -6,6 +6,7 @@ import { aggregateActivity } from "../entities/activity";
 import { bucketStart, bucketsInWindow } from "../entities/bucket";
 import type { CodeHealthEvent } from "../entities/code_health_event";
 import { toDay, type Day } from "../entities/day";
+import { loadPersonDirectory, measuredEvents } from "../entities/person_directory";
 import type { CodeHealthStore } from "../repositories/code_health_store";
 
 export class GetRepositoryTimeSeries {
@@ -17,6 +18,10 @@ export class GetRepositoryTimeSeries {
    *
    * Buckets with no events are still emitted, so a chart shows a gap as a zero
    * rather than closing over it and implying activity that never happened.
+   *
+   * Excluded accounts are dropped before anything is counted. A fleet's
+   * delivery cadence is a statement about what the team shipped, and a build
+   * service merging its own pull requests all weekend is not part of it.
    */
   async run(input: {
     /** Omit to aggregate every tracked repository into one series. */
@@ -25,11 +30,16 @@ export class GetRepositoryTimeSeries {
     to: Date;
     bucket: TimeSeriesBucket;
   }): Promise<TimeSeriesPoint[]> {
-    const events = await this.store.listEvents({
-      from: input.from,
-      to: input.to,
-      ...(input.repositoryId === undefined ? {} : { repositoryIds: [input.repositoryId] }),
-    });
+    const [collected, people] = await Promise.all([
+      this.store.listEvents({
+        from: input.from,
+        to: input.to,
+        ...(input.repositoryId === undefined ? {} : { repositoryIds: [input.repositoryId] }),
+      }),
+      loadPersonDirectory(this.store),
+    ]);
+
+    const events = measuredEvents(collected, people);
 
     const byBucket = new Map<Day, CodeHealthEvent[]>(
       bucketsInWindow(input.from, input.to, input.bucket).map((day) => [day, []]),

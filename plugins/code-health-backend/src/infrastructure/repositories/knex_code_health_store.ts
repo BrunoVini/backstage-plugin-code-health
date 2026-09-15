@@ -1,6 +1,7 @@
 import { resolvePackagePath, type DatabaseService } from "@backstage/backend-plugin-api";
 import type {
   EventKind,
+  ExclusionReason,
   IdentityLinkOrigin,
   IdentitySource,
   IntegrationId,
@@ -11,6 +12,7 @@ import type { CodeHealthEvent, EventOutcome } from "../../domain/entities/code_h
 import { eventId } from "../../domain/entities/code_health_event";
 import { addDays, daysBetween, fromStoredDate, toDay, type Day } from "../../domain/entities/day";
 import type {
+  IdentityExclusionRecord,
   IdentityLinkRecord,
   IdentityRecord,
   IdentityRef,
@@ -47,6 +49,7 @@ const SNAPSHOTS = "code_health_snapshots";
 const CONTRIBUTOR_MEASURES = "code_health_contributor_measures";
 const IDENTITIES = "code_health_identities";
 const IDENTITY_LINKS = "code_health_identity_links";
+const IDENTITY_EXCLUSIONS = "code_health_identity_exclusions";
 
 /** Rows are inserted in batches so a large window does not build one huge statement. */
 const INSERT_BATCH_SIZE = 200;
@@ -138,6 +141,14 @@ interface IdentityLinkRow {
   origin: string;
   linked_by: string | null;
   linked_at: Date | string;
+}
+
+interface IdentityExclusionRow {
+  source: string;
+  source_key: string;
+  reason: string;
+  excluded_by: string | null;
+  excluded_at: Date | string;
 }
 
 const toDate = (value: Date | string): Date =>
@@ -251,6 +262,14 @@ const toIdentityLink = (row: IdentityLinkRow): IdentityLinkRecord => ({
   origin: row.origin as IdentityLinkOrigin,
   linkedBy: row.linked_by,
   linkedAt: toDate(row.linked_at),
+});
+
+const toIdentityExclusion = (row: IdentityExclusionRow): IdentityExclusionRecord => ({
+  source: row.source as IdentitySource,
+  sourceKey: row.source_key,
+  reason: row.reason as ExclusionReason,
+  excludedBy: row.excluded_by,
+  excludedAt: toDate(row.excluded_at),
 });
 
 /** Adds whole days to an instant, preserving the time of day. */
@@ -637,6 +656,33 @@ export class KnexCodeHealthStore implements CodeHealthStore {
 
   async deleteIdentityLink(identity: IdentityRef): Promise<void> {
     await this.client(IDENTITY_LINKS)
+      .where({ source: identity.source, source_key: identity.sourceKey })
+      .delete();
+  }
+
+  async listIdentityExclusions(): Promise<IdentityExclusionRecord[]> {
+    const rows = await this.client<IdentityExclusionRow>(IDENTITY_EXCLUSIONS);
+    return rows.map(toIdentityExclusion);
+  }
+
+  async saveIdentityExclusion(exclusion: IdentityExclusionRecord): Promise<void> {
+    await this.client(IDENTITY_EXCLUSIONS)
+      .insert({
+        source: exclusion.source,
+        source_key: exclusion.sourceKey,
+        reason: exclusion.reason,
+        excluded_by: exclusion.excludedBy,
+        excluded_at: exclusion.excludedAt,
+      })
+      // Re-excluding an account under a different reason replaces the row
+      // rather than failing. There is one answer to "why is this row not
+      // measured", and a correction to it is the same statement made again.
+      .onConflict(["source", "source_key"])
+      .merge(["reason", "excluded_by", "excluded_at"]);
+  }
+
+  async deleteIdentityExclusion(identity: IdentityRef): Promise<void> {
+    await this.client(IDENTITY_EXCLUSIONS)
       .where({ source: identity.source, source_key: identity.sourceKey })
       .delete();
   }

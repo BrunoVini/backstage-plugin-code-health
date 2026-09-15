@@ -20,7 +20,9 @@ the community backend plugin), **WakaTime** (coding time and AI token counts), a
 **Confluence** (one Atlassian credential lights up both). Each identifies people under its own
 account system, which is why a contributor row is a *person* rather than an account and why the
 **Identities** tab exists. `PersonDirectory` resolves accounts to people through a link table on
-*read*, so correcting a link is retroactive across every window ever collected.
+*read*, so correcting a link is retroactive across every window ever collected. It answers the
+second question that tab decides too — whether a person is measured at all — from an exclusion
+table read the same way.
 
 All three packages share one version and are bumped together.
 
@@ -73,6 +75,7 @@ The whole read API lives under `/api/code-health/v1`:
 ```
 GET  /repositories  /contributors  /timeseries  /coverage  /capabilities  /identities
 PUT  /identities/links            DELETE /identities/links/:source/:key
+PUT  /identities/exclusions       DELETE /identities/exclusions/:source/:key
 GET  /contributors/:key/trend     GET /contributors/:key/repositories
 GET  /repositories/:id/trend
 GET  /access                      POST /ingestion/reset        POST /refresh
@@ -82,9 +85,9 @@ New files behind the trends, ownership and administration work:
 
 | Package | Files |
 |---|---|
-| `-common` | `score.ts`, `productivity_score.ts`, `repository_health_score.ts`, `trend.ts`, `ownership.ts` |
-| `-backend` | `domain/commands/get_contributor_trend.ts`, `get_repository_trend.ts`, `list_owned_repositories.ts`, `reset_ingestion.ts`, `authorize_administrator.ts`; `domain/entities/permissions.ts`, `bucket.ts`, `contributor_aggregation.ts`, `repository_summary_builder.ts`; `migrations/20260910000000_owner.js` |
-| frontend | `presentation/pages/contributor_detail_page.tsx`, `repository_detail_page.tsx`; `components/charts/trend_chart.tsx`, `components/score_card.tsx`, `components/trend_range_picker.tsx`, `components/owned_repositories_card.tsx`, `components/ingestion_reset_button.tsx`; `hooks/use_trend_window.ts`, `hooks/use_contributor_trend.ts`, `hooks/use_owned_repositories.ts`, `hooks/use_repository_trend.ts`, `hooks/use_access.ts`; `domain/entities/contributor_trend.ts`, `domain/entities/repository_trend.ts`, `domain/entities/reset_reach.ts` |
+| `-common` | `score.ts`, `productivity_score.ts`, `repository_health_score.ts`, `trend.ts`, `ownership.ts`, `identity_exclusion.ts` |
+| `-backend` | `domain/commands/get_contributor_trend.ts`, `get_repository_trend.ts`, `list_owned_repositories.ts`, `reset_ingestion.ts`, `authorize_administrator.ts`, `exclude_identity.ts`; `domain/entities/permissions.ts`, `bucket.ts`, `contributor_aggregation.ts`, `repository_summary_builder.ts`; `migrations/20260910000000_owner.js`, `migrations/20260915000000_identity_exclusions.js` |
+| frontend | `presentation/pages/contributor_detail_page.tsx`, `repository_detail_page.tsx`; `components/charts/trend_chart.tsx`, `components/score_card.tsx`, `components/trend_range_picker.tsx`, `components/owned_repositories_card.tsx`, `components/ingestion_reset_button.tsx`; `components/identity_exclusion_cell.tsx`; `hooks/use_trend_window.ts`, `hooks/use_contributor_trend.ts`, `hooks/use_owned_repositories.ts`, `hooks/use_repository_trend.ts`, `hooks/use_access.ts`; `domain/entities/contributor_trend.ts`, `domain/entities/repository_trend.ts`, `domain/entities/reset_reach.ts` |
 
 ## Things not to change without understanding why
 
@@ -138,6 +141,17 @@ New files behind the trends, ownership and administration work:
   namespace). A person owns a repository when its owner is their `User` entity or a group they
   belong to, parents included (`memberOf` then `childOf`). An unlinked account owns nothing — the
   Identities tab is where the link is made.
+- **An excluded account is measured by nothing.** `code_health_identity_exclusions` holds
+  `(source, source_key)` with one of four `ExclusionReason` values, and `PersonDirectory` applies it
+  on *read*, keyed by **person** — so excluding one account of a linked human excludes all of them,
+  and including it again restores every window already collected. Every read that turns events into
+  rows goes through `loadPersonDirectory(store)` and `measuredEvents(events, people)`:
+  contributors, both trends, the repositories table and the fleet cadence. Adding a sixth read that
+  aggregates events without them is the bug to watch for — it would leave one view measuring a build
+  service every other view has dropped. `accumulateContributors` drops an excluded account itself,
+  so nothing accumulates for it and it never reaches `fleetReferenceOf`; a zeroed row would still be
+  a name on the table and would still set the bar everybody is scored against. A reset keeps the
+  exclusions, like the links.
 - **Only a configured administrator the permission framework also allows may reset the ingestion.**
   `codeHealth.administrators` is empty by default and `code-health.ingestion.reset` can be denied on
   top of it; both must allow, and the route authorises on every request rather than trusting that

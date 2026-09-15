@@ -1,6 +1,7 @@
 import type {
   ContributorSummary,
   CoverageInfo,
+  ExclusionReason,
   GetAccessResponse,
   GetContributorTrendResponse,
   GetRepositoryTrendResponse,
@@ -67,16 +68,20 @@ export interface IntegrationsService {
 }
 
 /**
- * The accounts the plugin has seen, and which person each belongs to.
+ * The accounts the plugin has seen, which person each belongs to, and which of
+ * them are measured at all.
  *
- * This is the only write the dashboard makes. Everything else is a read of what
- * a scheduled task already collected; linking two accounts is a statement only
- * a person can make, and it is what turns three partial rows into one.
+ * These are the only writes the dashboard makes. Everything else is a read of
+ * what a scheduled task already collected; both of these are statements only a
+ * person can make — that two accounts are one human, and that an account is not
+ * a human being measured — and between them they are what turns three partial
+ * rows into one and keep a build service off the list entirely.
  */
 export interface IdentityService {
   listIdentities(filter: {
     sources?: readonly IdentitySource[];
     linked?: boolean;
+    excluded?: boolean;
   }): Promise<IdentityRow[]>;
 
   linkIdentity(link: {
@@ -86,6 +91,22 @@ export interface IdentityService {
   }): Promise<void>;
 
   unlinkIdentity(identity: {
+    source: IdentitySource;
+    sourceKey: string;
+  }): Promise<void>;
+
+  /** Takes the account out of every figure the plugin reports, and says why. */
+  excludeIdentity(exclusion: {
+    source: IdentitySource;
+    sourceKey: string;
+    reason: ExclusionReason;
+  }): Promise<void>;
+
+  /**
+   * Puts it back, retroactively — nothing was deleted, so every window the
+   * plugin ever collected reports the account again from the next read.
+   */
+  includeIdentity(identity: {
     source: IdentitySource;
     sourceKey: string;
   }): Promise<void>;

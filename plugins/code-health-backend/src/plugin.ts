@@ -9,6 +9,7 @@ import { GetContributorTrend } from "./domain/commands/get_contributor_trend";
 import { GetRepositoryTimeSeries } from "./domain/commands/get_repository_time_series";
 import { GetRepositoryTrend } from "./domain/commands/get_repository_trend";
 import { DiscoverRepositories } from "./domain/commands/discover_repositories";
+import { ExcludeIdentity } from "./domain/commands/exclude_identity";
 import { IngestRepositoryHistory } from "./domain/commands/ingest_repository_history";
 import { LinkIdentity } from "./domain/commands/link_identity";
 import { ListContributorSummaries } from "./domain/commands/list_contributor_summaries";
@@ -135,6 +136,7 @@ export const codeHealthPlugin = createBackendPlugin({
             owned: new ListOwnedRepositories(repositories, catalogReader),
             identities: new ListIdentities(store, catalogReader),
             links: new LinkIdentity(store, catalogReader),
+            exclusions: new ExcludeIdentity(store),
             access: new AuthorizeAdministrator({
               userInfo,
               permissions,

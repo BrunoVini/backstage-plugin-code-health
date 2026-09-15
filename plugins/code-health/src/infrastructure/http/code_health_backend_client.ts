@@ -2,6 +2,7 @@ import type { DiscoveryApi, FetchApi } from "@backstage/core-plugin-api";
 import type {
   ContributorSummary,
   CoverageInfo,
+  ExclusionReason,
   GetAccessResponse,
   GetCapabilitiesResponse,
   GetContributorTrendResponse,
@@ -116,12 +117,14 @@ export class CodeHealthBackendClient
   async listIdentities(filter: {
     sources?: readonly IdentitySource[];
     linked?: boolean;
+    excluded?: boolean;
   }): Promise<IdentityRow[]> {
     const body = await this.get<ListIdentitiesResponse>("identities", {
       ...(filter.sources === undefined || filter.sources.length === 0
         ? {}
         : { source: [...filter.sources] }),
       ...(filter.linked === undefined ? {} : { linked: String(filter.linked) }),
+      ...(filter.excluded === undefined ? {} : { excluded: String(filter.excluded) }),
     });
     return [...body.items];
   }
@@ -141,6 +144,26 @@ export class CodeHealthBackendClient
     await this.send(
       "DELETE",
       `${CODE_HEALTH_API_VERSION}/identities/links/${identity.source}/${encodeURIComponent(
+        identity.sourceKey,
+      )}`,
+    );
+  }
+
+  async excludeIdentity(exclusion: {
+    source: IdentitySource;
+    sourceKey: string;
+    reason: ExclusionReason;
+  }): Promise<void> {
+    await this.send("PUT", `${CODE_HEALTH_API_VERSION}/identities/exclusions`, exclusion);
+  }
+
+  async includeIdentity(identity: {
+    source: IdentitySource;
+    sourceKey: string;
+  }): Promise<void> {
+    await this.send(
+      "DELETE",
+      `${CODE_HEALTH_API_VERSION}/identities/exclusions/${identity.source}/${encodeURIComponent(
         identity.sourceKey,
       )}`,
     );

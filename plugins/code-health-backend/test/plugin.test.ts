@@ -628,6 +628,106 @@ describe("codeHealthPlugin", () => {
       expect(response.status).toBe(400);
     });
 
+    it("should reject an `excluded` filter that is not a boolean", async () => {
+      // given
+      const { server } = await startBackend([]);
+
+      // when
+      const response = await request(server)
+        .get("/api/code-health/v1/identities")
+        .query({ excluded: "maybe" });
+
+      // then
+      expect(response.status).toBe(400);
+    });
+
+    it("should refuse to exclude an account nobody has observed", async () => {
+      // given
+      // An exclusion that matches nothing leaves the tables exactly as they
+      // were, and looks exactly like one that worked.
+      const { server } = await startBackend([]);
+
+      // when
+      const response = await request(server)
+        .put("/api/code-health/v1/identities/exclusions")
+        .send({ source: "vcs", sourceKey: "ghost", reason: "automated-bot" });
+
+      // then
+      expect(response.status).toBe(404);
+    });
+
+    it("should reject an exclusion naming a source it does not know", async () => {
+      // given
+      const { server } = await startBackend([]);
+
+      // when
+      const response = await request(server)
+        .put("/api/code-health/v1/identities/exclusions")
+        .send({ source: "sonar", sourceKey: "x", reason: "automated-bot" });
+
+      // then
+      expect(response.status).toBe(400);
+    });
+
+    it("should reject an exclusion with a reason nobody can review", async () => {
+      // given
+      // The reason is the whole justification for a row disappearing from every
+      // table, so there is no shape of this request that omits or invents one.
+      const { server } = await startBackend([]);
+
+      // when
+      const response = await request(server)
+        .put("/api/code-health/v1/identities/exclusions")
+        .send({ source: "vcs", sourceKey: "x", reason: "because I said so" });
+
+      // then
+      expect(response.status).toBe(400);
+    });
+
+    it("should refuse an exclusion from a service rather than a person", async () => {
+      // given
+      // This is the write that makes rows disappear from every table, and the
+      // only thing that makes it reviewable later is a name beside the reason.
+      const { server } = await startBackend([]);
+
+      // when
+      const response = await request(server)
+        .put("/api/code-health/v1/identities/exclusions")
+        .set("Authorization", "Bearer mock-service-token")
+        .send({ source: "vcs", sourceKey: "x", reason: "automated-bot" });
+
+      // then
+      expect(response.status).toBe(403);
+    });
+
+    it("should accept measuring an account that was never excluded", async () => {
+      // given
+      // `DELETE` is idempotent, and a screen that failed on a second click
+      // would be worse than one that shrugged.
+      const { server } = await startBackend([]);
+
+      // when
+      const response = await request(server).delete(
+        "/api/code-health/v1/identities/exclusions/vcs/ghost",
+      );
+
+      // then
+      expect(response.status).toBe(204);
+    });
+
+    it("should reject measuring an account again for a source it does not know", async () => {
+      // given
+      const { server } = await startBackend([]);
+
+      // when
+      const response = await request(server).delete(
+        "/api/code-health/v1/identities/exclusions/sonar/ghost",
+      );
+
+      // then
+      expect(response.status).toBe(400);
+    });
+
     it("should refuse a refresh from a service rather than a person", async () => {
       // given
       // The route exists so someone looking at stale numbers can ask for a run,

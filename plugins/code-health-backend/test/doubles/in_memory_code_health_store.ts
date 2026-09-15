@@ -8,6 +8,7 @@ import { eventId } from "../../src/domain/entities/code_health_event";
 import { addDays, daysBetween, toDay, type Day } from "../../src/domain/entities/day";
 import {
   identityKey,
+  type IdentityExclusionRecord,
   type IdentityLinkRecord,
   type IdentityRecord,
   type IdentityRef,
@@ -58,6 +59,7 @@ export class InMemoryCodeHealthStore implements CodeHealthStore {
   >();
   private identities = new Map<string, IdentityRecord>();
   private identityLinks = new Map<string, IdentityLinkRecord>();
+  private identityExclusions = new Map<string, IdentityExclusionRecord>();
 
   /** Number of `commitIngestion` calls, so tests can assert on write volume. */
   commitCount = 0;
@@ -318,6 +320,21 @@ export class InMemoryCodeHealthStore implements CodeHealthStore {
 
   async deleteIdentityLink(identity: IdentityRef): Promise<void> {
     this.identityLinks.delete(identityKey(identity));
+  }
+
+  async listIdentityExclusions(): Promise<IdentityExclusionRecord[]> {
+    return [...this.identityExclusions.values()];
+  }
+
+  async saveIdentityExclusion(exclusion: IdentityExclusionRecord): Promise<void> {
+    // Replaces whatever was there, mirroring the real store: there is one
+    // answer to "why is this row not measured", and re-excluding under a
+    // different reason is a correction to it rather than a second exclusion.
+    this.identityExclusions.set(identityKey(exclusion), exclusion);
+  }
+
+  async deleteIdentityExclusion(identity: IdentityRef): Promise<void> {
+    this.identityExclusions.delete(identityKey(identity));
   }
 
   async listLatestSnapshots(options: {

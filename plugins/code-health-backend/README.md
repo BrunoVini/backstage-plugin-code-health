@@ -105,3 +105,10 @@ All three report people under account systems that agree with neither each other
 a contributor row is a **person** rather than an account. The `Identities` screen is where an account
 is attached to a catalog `User`; the WakaTime reference explains the rules that screen applies, and
 they are the same for every source.
+
+That screen is also where an account that is not a person being measured — a build service, a bot,
+an outside contributor, a leaver — is **excluded** under one of four reasons. An excluded account
+leaves every figure the backend reports: no contributor row, no contribution to a repository's
+counters or the fleet cadence, and no part in the fleet reference the relative components of the
+productivity score are read against. Nothing is deleted; the exclusion is applied when a row is
+built, so including the account again restores every window already collected.
