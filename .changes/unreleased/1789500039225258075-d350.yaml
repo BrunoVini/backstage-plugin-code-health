@@ -1,3 +1,0 @@
-kind: 'Added'
-body: 'added an **Averages** card to a contributor''s detail page, giving their daily, weekly and monthly rate for each measure — commits, pull requests opened and merged, reviews, churn, pipeline runs, and the coding time and resolved tickets of whichever integrations are configured. It is the productivity score''s own arithmetic written out, so a reader who disagrees with the number can see which row they disagree with'
-time: '2026-09-15T19:20:39.225189683Z'

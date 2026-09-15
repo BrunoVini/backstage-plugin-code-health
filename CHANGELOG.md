@@ -13,6 +13,26 @@ nothing.
 
 ## [Unreleased]
 
+## [5.0.0] - 2026-09-15
+
+### Added
+
+- added an **Averages** card to a contributor's detail page, giving their daily, weekly and monthly rate for each measure — commits, pull requests opened and merged, reviews, churn, pipeline runs, and the coding time and resolved tickets of whichever integrations are configured. It is the productivity score's own arithmetic written out, so a reader who disagrees with the number can see which row they disagree with
+- added calendar months to the range picker on both detail pages, alongside the rolling one-to-six-month counts. A month resolves through the same `toWindow` the tables use, so "September" cannot mean two different windows depending on which screen it was picked from
+- added the ability to exclude an account from every measurement the plugin makes, from the **Identities** tab, under one of four required reasons — former contributor, open source contributor, automated bot, or service or system account. An excluded account gets no contributor row at all rather than a zeroed one, stops counting towards a repository's counters and the fleet delivery cadence, takes its coding time off the repositories it was logged against, and — the reason this matters most — stops setting the fleet reference that commits, merged pull requests, churn and reviews are scored against. A repository's builds, releases and tags stay in its counters with nobody credited for them, so excluding a build service never makes a repository look like it has no CI. The exclusion is a statement about a *person*, so excluding one account of somebody the link table says is one human excludes all of their accounts. Nothing is deleted: the reason and its author are stored, and measuring the account again restores every window already collected
+
+### Changed
+
+- **BREAKING CHANGE:** changed the productivity score to read output as a **rate against the team's average rate** rather than as a share of the top figure anybody recorded. Each total is divided by the days the range spans and read against the mean across the people the component could be measured on, with twice that mean scoring full marks. Against the maximum, one person's extraordinary month pushed every colleague down for reasons that had nothing to do with them, and a single automation nobody had excluded yet could flatten a whole team at once; against the mean, keeping pace with the team scores half and an outlier moves the reference by its share of the headcount. Reading a rate rather than a total is what lets a figure mean the same thing whatever range is picked; it does not correct for tenure or absence, because everybody is divided by the same window. On a person's detail page each bucket is read against the same people the whole window measured, with somebody quiet in a bucket counted as a zero there rather than left out of the mean, so the line under the headline is the same quantity as the headline. Every score on the Contributors tab and on a person's detail page moves — a lone contributor, who is the team average by definition, now scores mid-range where they used to score full marks. The break is in `@rios0rios0/backstage-plugin-code-health-common`: `fleetReferenceOf` now takes the window's day count as a required second argument, so a host calling it with one stops compiling, and `FleetReference` carries that count as `days`, which anything constructing a reference by hand has to supply — spreading `EMPTY_FLEET_REFERENCE` still compiles
+- changed the **Identities** tab to open on the accounts nobody has linked, which are the only rows that need anything done to them; a switch widens it to every account, and a new **Measurement** filter narrows it to the excluded ones
+- changed the repositories table's **Owner** column to show the owning entity's name and photograph rather than its `spec.owner` slug, resolved from the catalog on read for `Group` owners as well as `User` ones. The column now sorts and filters on the name actually rendered, and falls back to the slug for an owner the catalog no longer holds. `RepositorySummary` carries the profile as `ownerProfile` — a *response* shape the backend fills, so only something that constructs one by hand, such as a test fixture or a stub backend, has to supply it
+- refreshed `.github/copilot-instructions.md` to drop the pre-3.0.3 AutoBump lockfile-refresh workaround, matching `CLAUDE.md` and `.autobump.yaml` now that `refresh: true` is honoured on its own
+
+### Fixed
+
+- fixed a window that ends exactly at midnight — a calendar month picked on a table or on a detail page — reading one day past its end. Snapshots and the per-day coding time and ticket rows are read by inclusive day, and the first instant of October was being converted to the first *of* October, so September carried one extra day of measures and the snapshot taken after it: in the tables, on both detail pages and in the last bucket of every trend. Every read now ends on the day before `to` whenever `to` lands on midnight, which is the day the buckets already ended on
+- fixed the **Source** filter on the **Identities** tab drawing its label across the selected option — a native `select` always renders whichever option is current, so its label has to be shrunk unconditionally
+
 ## [4.2.0] - 2026-09-10
 
 ### Added
