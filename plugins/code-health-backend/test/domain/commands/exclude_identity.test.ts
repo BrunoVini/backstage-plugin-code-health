@@ -1,9 +1,11 @@
+import { computeRepositoryHealthScore } from "@rios0rios0/backstage-plugin-code-health-common";
 import { ExcludeIdentity } from "../../../src/domain/commands/exclude_identity";
 import { GetContributorTrend } from "../../../src/domain/commands/get_contributor_trend";
 import { GetRepositoryTimeSeries } from "../../../src/domain/commands/get_repository_time_series";
 import { UnknownIdentityError } from "../../../src/domain/commands/link_identity";
 import { ListContributorSummaries } from "../../../src/domain/commands/list_contributor_summaries";
 import { ListIdentities } from "../../../src/domain/commands/list_identities";
+import { GetRepositoryTrend } from "../../../src/domain/commands/get_repository_trend";
 import { ListRepositorySummaries } from "../../../src/domain/commands/list_repository_summaries";
 import { DiscoveredRepositoryBuilder } from "../../builders/discovered_repository_builder";
 import { EventBuilder } from "../../builders/event_builder";
@@ -61,6 +63,20 @@ const commitsBy = (repositoryId: string, actorKey: string, count: number) =>
       .build(),
   );
 
+const buildsBy = (
+  repositoryId: string,
+  actorKey: string,
+  outcomes: readonly ("succeeded" | "failed")[],
+) =>
+  outcomes.map((outcome, index) =>
+    EventBuilder.build(outcome)
+      .withRepository(repositoryId)
+      .withActor(actorKey)
+      .withExternalId(`run-${actorKey}-${index}`)
+      .at("2026-08-09T12:00:00.000Z")
+      .build(),
+  );
+
 const commit = async (
   store: InMemoryCodeHealthStore,
   repositoryId: string,
@@ -69,7 +85,12 @@ const commit = async (
   await store.commitIngestion({
     repositoryId,
     events,
-    chunk: { repositoryId, kinds: ["commit"], days: ["2026-08-09"], ingestedAt: NOW },
+    chunk: {
+      repositoryId,
+      kinds: ["commit", "build"],
+      days: ["2026-08-09"],
+      ingestedAt: NOW,
+    },
     status: "complete",
     now: NOW,
   });
@@ -478,6 +499,129 @@ describe("Excluding an account from the measuring system", () => {
     // then
     const points = await new GetRepositoryTimeSeries(store).run({ ...WINDOW, bucket: "day" });
     expect(points.reduce((total, point) => total + point.activity.commits, 0)).toBe(0);
+  });
+
+  it("should keep the pipeline runs an excluded account triggered", async () => {
+    // given
+    // A build is a fact about the repository's machinery that happens to carry
+    // whoever triggered it. Dropping it would do at read time exactly what this
+    // feature refuses to do at collection time.
+    const { store, repositoryId } = await withRepository(
+      await seed([{ source: "vcs", sourceKey: "build-service" }]),
+    );
+    await commit(store, repositoryId, [
+      ...buildsBy(repositoryId, "build-service", ["succeeded", "succeeded", "failed"]),
+    ]);
+
+    // when
+    await new ExcludeIdentity(store).exclude({
+      source: "vcs",
+      sourceKey: "build-service",
+      reason: "service-account",
+      excludedBy: null,
+      now: NOW,
+    });
+
+    // then
+    const [repository] = await new ListRepositorySummaries(store).run(WINDOW);
+    expect(repository?.activity.builds).toBe(3);
+    expect(repository?.activity.buildsSucceeded).toBe(2);
+    expect(repository?.activity.buildsFailed).toBe(1);
+    // And nobody is credited for them: a contributor count is a count of people.
+    expect(repository?.activity.contributors).toBe(0);
+  });
+
+  it("should keep the repository health build component measured", async () => {
+    // given
+    // `buildSuccessRate` carries a tenth of the repository health weight, and
+    // `combineScore` redistributes anything unmeasured — so zeroing the runs
+    // would silently reweight every repository whose pipelines are scheduled,
+    // release or deployment runs, fleet-wide.
+    const { store, repositoryId } = await withRepository(
+      await seed([{ source: "vcs", sourceKey: "build-service" }]),
+    );
+    await commit(store, repositoryId, buildsBy(repositoryId, "build-service", ["succeeded"]));
+
+    // when
+    await new ExcludeIdentity(store).exclude({
+      source: "vcs",
+      sourceKey: "build-service",
+      reason: "service-account",
+      excludedBy: null,
+      now: NOW,
+    });
+
+    // then
+    const [repository] = await new ListRepositorySummaries(store).run(WINDOW);
+    const component = computeRepositoryHealthScore(repository!).components.find(
+      (candidate) => candidate.id === "buildSuccessRate",
+    );
+    expect(component?.normalized).toBe(1);
+  });
+
+  it("should still keep the pipeline runs off the excluded account's own row", async () => {
+    // given
+    // Kept for the repository is not the same as credited to somebody.
+    const { store, repositoryId } = await withRepository(
+      await seed([{ source: "vcs", sourceKey: "build-service" }]),
+    );
+    await commit(store, repositoryId, buildsBy(repositoryId, "build-service", ["succeeded"]));
+
+    // when
+    await new ExcludeIdentity(store).exclude({
+      source: "vcs",
+      sourceKey: "build-service",
+      reason: "service-account",
+      excludedBy: null,
+      now: NOW,
+    });
+
+    // then
+    expect(await new ListContributorSummaries({ store }).run(WINDOW)).toEqual([]);
+  });
+
+  it("should take an excluded person's coding time off the repository row", async () => {
+    // given
+    // Otherwise the two tabs disagree about the same hours: gone from the
+    // person's contributor row, still on the repository's.
+    const { store, repositoryId } = await withRepository(
+      await seed([{ source: "wakatime", sourceKey: "jrios" }]),
+    );
+    await store.saveContributorMetrics({
+      source: "wakatime",
+      day: "2026-08-09",
+      capturedAt: NOW,
+      metrics: new Map([
+        [
+          "jrios",
+          WakaTimeMetricsBuilder.aDay("2026-08-09")
+            .withSeconds(7200)
+            .withProject("gateway", 7200)
+            .build(),
+        ],
+      ]),
+    });
+
+    // when
+    await new ExcludeIdentity(store).exclude({
+      source: "wakatime",
+      sourceKey: "jrios",
+      reason: "former-contributor",
+      excludedBy: null,
+      now: NOW,
+    });
+
+    // then
+    const [repository] = await new ListRepositorySummaries(store).run(WINDOW);
+    expect(repository?.wakaTimeMetrics).toBeNull();
+
+    // and the repository's own trend agrees with its row
+    const trend = await new GetRepositoryTrend(store).run({
+      repositoryId,
+      ...WINDOW,
+      bucket: "day",
+    });
+    expect(trend.summary.wakaTimeMetrics).toBeNull();
   });
 
   it("should restore every window already collected when the account is measured again", async () => {

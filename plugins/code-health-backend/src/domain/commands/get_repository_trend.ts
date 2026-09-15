@@ -10,7 +10,11 @@ import { computeRepositoryHealthScore } from "@rios0rios0/backstage-plugin-code-
 import { bucketEnd, bucketsInWindow } from "../entities/bucket";
 import type { CodeHealthEvent } from "../entities/code_health_event";
 import { startOfDay, toDay, type Day } from "../entities/day";
-import { loadPersonDirectory, measuredEvents } from "../entities/person_directory";
+import {
+  loadPersonDirectory,
+  measuredContributorMetrics,
+  measuredEvents,
+} from "../entities/person_directory";
 import type {
   RepositorySnapshot,
   RepositorySnapshotPayload,
@@ -106,7 +110,7 @@ export class GetRepositoryTrend {
     const to = toDay(input.to);
     const repositoryIds = [input.repositoryId];
 
-    const [tracked, collected, wakaTimeRows, [baseline], rangeSnapshots, people] =
+    const [tracked, collected, collectedWakaTime, [baseline], rangeSnapshots, people] =
       await Promise.all([
         this.store.getTrackedRepository(input.repositoryId),
         this.store.listEvents({ from: input.from, to: input.to, repositoryIds }),
@@ -120,10 +124,11 @@ export class GetRepositoryTrend {
         loadPersonDirectory(this.store),
       ]);
 
-    // Dropped here rather than per bucket, so the headline row and every point
-    // under it are built from the same events and cannot disagree about who was
-    // measured.
+    // Both resolved here rather than per bucket, so the headline row and every
+    // point under it are built from the same measurements and cannot disagree
+    // about who was measured.
     const events = measuredEvents(collected, people);
+    const wakaTimeRows = measuredContributorMetrics(collectedWakaTime, people, "wakatime");
 
     // The router has already answered 404 for an untracked id; this covers the
     // repository that left the catalog between the two reads, and answers the

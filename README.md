@@ -299,11 +299,20 @@ four reasons, one of which has to be picked:
 | Automated bot | A bot that commits, opens pull requests or votes on them under its own account |
 | Service or system account | An identity the platform itself acts as — an Azure DevOps build service, a deployment principal |
 
-An excluded account leaves **every** figure the plugin reports: its contributor row disappears
-rather than reading zero, its events stop counting towards the repository counters and the fleet
-delivery cadence, and — the reason this matters most — it stops setting the fleet reference that
+An excluded account leaves **every figure that measures a person**: its contributor row disappears
+rather than reading zero, its commits, pull requests and reviews stop counting towards the
+repository counters and the fleet delivery cadence, its coding time comes off the repositories it
+was logged against, and — the reason this matters most — it stops setting the fleet reference that
 commits, merged pull requests, churn and reviews are scored against. An automation merging two
 hundred pull requests a month is otherwise the bar every human on the team is measured by.
+
+What it does **not** do is take the repository's machinery down with it. A build, a release and a
+tag are facts about the repository that happen to carry whoever triggered them, so they stay in its
+counters with nobody credited for them. Otherwise a platform excluding its own build service would
+report "no build reached a verdict" for every repository whose pipelines are scheduled, release or
+deployment runs, and a tenth of the repository health weight would quietly redistribute itself
+fleet-wide. Excluding an account changes who is credited; it never makes a repository look like it
+has no CI.
 
 The exclusion is a statement about a **person**, recorded on the account it was made from. Excluding
 one account of somebody the link table says is one human excludes all of their accounts, so a

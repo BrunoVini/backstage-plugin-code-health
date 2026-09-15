@@ -1,4 +1,9 @@
-import type { ContributorIdentity } from "@rios0rios0/backstage-plugin-code-health-common";
+import type {
+  ContributorIdentity,
+  EventKind,
+  IdentitySource,
+} from "@rios0rios0/backstage-plugin-code-health-common";
+import type { ContributorMetricRow } from "../repositories/code_health_store";
 import type { CodeHealthEvent } from "./code_health_event";
 import {
   identityKey,
@@ -150,28 +155,91 @@ export const actorIdentityOf = (event: CodeHealthEvent): IdentityRef | null =>
     : { source: "vcs", sourceKey: normalizeSourceKey(event.actorKey) };
 
 /**
- * The events that count, which is every event but the ones an excluded person
- * produced.
+ * The kinds that are a statement about a *person*.
  *
- * Applied to the events themselves rather than only to the contributors table,
- * because "excluded from the measuring system" has to mean the whole system:
- * a build service left in would still be a repository's busiest committer, a
- * quarter of the fleet's delivery cadence, and — through the fleet reference
- * every relative score is read against — the reason a whole team's output
- * scores look like a rounding error beside it.
+ * A commit, a pull request and a review are somebody's work, so an excluded
+ * account's are not counted anywhere. A build, a release and a tag are facts
+ * about the repository's machinery that merely carry whoever triggered them —
+ * see {@link measuredEvents} for why that difference decides the whole rule.
+ */
+const PERSON_SCOPED_KINDS: ReadonlySet<EventKind> = new Set<EventKind>([
+  "commit",
+  "pull_request",
+  "pr_review",
+]);
+
+/**
+ * A repository-shaped event with nobody credited for it.
  *
- * An event with no actor at all is kept. Nobody has been excluded, and dropping
- * it would silently shrink the repository counters to punish a provider that
- * did not stamp a name on a commit.
+ * The run happened and the repository's counters still hold it; what is removed
+ * is the claim that a measured person triggered it. `aggregateActivity` counts
+ * a contributor only where an actor survives, and `accumulateContributors`
+ * skips an event with no actor, so nulling the three fields is the whole of
+ * "this ran, and it is nobody's credit".
+ */
+const uncredited = (event: CodeHealthEvent): CodeHealthEvent => ({
+  ...event,
+  actorKey: null,
+  actorName: null,
+  actorAvatarUrl: null,
+});
+
+/**
+ * A window's events as a *repository's* counters should read them, with
+ * excluded people taken out.
+ *
+ * Two rules, because events answer two different questions. A commit, a pull
+ * request or a review is a statement about a person, so an excluded account's
+ * are dropped outright: a build service left in would still be a repository's
+ * busiest committer and a quarter of the fleet's delivery cadence.
+ *
+ * A build, a release or a tag is a fact about the repository's machinery that
+ * happens to carry whoever triggered it, so it **stays** and only the credit is
+ * removed. Dropping it instead would do at read time exactly what this feature
+ * refuses to do at collection time — a platform excluding its build service
+ * would zero `builds`, `buildsSucceeded` and `buildsFailed` for every
+ * repository whose runs are scheduled, release or deployment pipelines (which
+ * `attributeMergedWork` cannot re-attribute, having no commit to resolve), so
+ * `buildSuccessRate` would report "no build reached a verdict" and
+ * `combineScore` would silently redistribute a tenth of the repository health
+ * weight, fleet-wide. Excluding an account changes *who is credited*; it must
+ * never make a repository look like it has no CI.
+ *
+ * An event with no actor at all is kept and left alone. Nobody has been
+ * excluded, and stripping it further would punish a provider that did not stamp
+ * a name on a commit.
  */
 export const measuredEvents = (
   events: readonly CodeHealthEvent[],
   people: PersonDirectory,
 ): CodeHealthEvent[] =>
-  events.filter((event) => {
+  events.flatMap((event) => {
     const identity = actorIdentityOf(event);
-    return identity === null || people.isMeasured(identity);
+    if (identity === null || people.isMeasured(identity)) return [event];
+    return PERSON_SCOPED_KINDS.has(event.kind) ? [] : [uncredited(event)];
   });
+
+/**
+ * A source's stored per-person measures, with the excluded people taken out.
+ *
+ * The same rule as {@link measuredEvents}, applied to the other place a stored
+ * measure turns into a row. A repository's coding time is the sum of what its
+ * people logged against the matching project, so an excluded person's hours
+ * reaching it would leave the two tabs disagreeing about the same hours — gone
+ * from that person's contributor row, still on the repository's, and still
+ * counted in that project's contributor count.
+ *
+ * The contributors path does not need this: `accumulateContributors` resolves
+ * every row through the directory itself. It is the repository path, which
+ * aggregates by project rather than by person, that has nowhere else to apply
+ * the rule.
+ */
+export const measuredContributorMetrics = <T>(
+  rows: readonly ContributorMetricRow<T>[],
+  people: PersonDirectory,
+  source: IdentitySource,
+): ContributorMetricRow<T>[] =>
+  rows.filter((row) => people.isMeasured({ source, sourceKey: row.contributorKey }));
 
 /**
  * Reads the three small tables a directory is built from, in one round trip.

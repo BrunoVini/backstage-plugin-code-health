@@ -152,6 +152,14 @@ New files behind the trends, ownership and administration work:
   so nothing accumulates for it and it never reaches `fleetReferenceOf`; a zeroed row would still be
   a name on the table and would still set the bar everybody is scored against. A reset keeps the
   exclusions, like the links.
+- **`measuredEvents` treats the kinds differently on purpose.** `commit`, `pull_request` and
+  `pr_review` measure a *person* and are dropped; `build`, `release` and `tag` measure the
+  repository and are **kept with the actor nulled**, so the runs stay in its counters and nobody is
+  credited. Dropping them would leave `buildSuccessRate` unmeasured wherever a platform excludes its
+  build service, silently redistributing a tenth of the repository health weight fleet-wide.
+  `measuredContributorMetrics` applies the same rule to the WakaTime rows in
+  `list_repository_summaries.ts` and `get_repository_trend.ts`, which aggregate by project and so
+  cannot apply it anywhere else.
 - **Only a configured administrator the permission framework also allows may reset the ingestion.**
   `codeHealth.administrators` is empty by default and `code-health.ingestion.reset` can be denied on
   top of it; both must allow, and the route authorises on every request rather than trusting that

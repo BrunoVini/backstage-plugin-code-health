@@ -72,7 +72,7 @@ Hexagonal: `domain/` holds entities, commands and ports; `infrastructure/` holds
 | `src/domain/commands/discover_repositories.ts` | Catalog → tracked repositories |
 | `src/domain/commands/ingest_repository_history.ts` | The two-phase background actor |
 | `src/domain/commands/capture_repository_snapshots.ts` | Daily current-state capture, and every optional enricher's pass |
-| `src/domain/entities/person_directory.ts` | Which person an account belongs to and whether that person is measured, built per request from the link and exclusion tables; `measuredEvents` and `loadPersonDirectory` are the one way every read applies both |
+| `src/domain/entities/person_directory.ts` | Which person an account belongs to and whether that person is measured, built per request from the link and exclusion tables; `loadPersonDirectory`, `measuredEvents` and `measuredContributorMetrics` are the one way every read applies both |
 | `src/domain/commands/reconcile_identities.ts` | The one automatic link: an account whose e-mail matches a catalog `User` |
 | `src/domain/commands/link_identity.ts` / `list_identities.ts` | The Identities screen's read and its two linking writes |
 | `src/domain/commands/exclude_identity.ts` | The Identities screen's other two writes: taking an account out of every measurement under a named reason, and putting it back |
@@ -212,15 +212,33 @@ The wire contract, and the pure functions both sides have to agree on.
   account nobody has linked the person key *is* the account key, so a bot's exclusion touches
   nothing else. A row that inherited one names the account carrying it and offers no undo, because
   only the row that carries it has anything to undo.
-- **Excluded means excluded from everything, and an excluded account gets no row rather than a
-  zeroed one.** `accumulateContributors` drops it, so it never reaches `fleetReferenceOf`; a row of
-  zeros would still be a name on the contributors table and would still take part in the reference
-  everybody is scored against. `measuredEvents` drops its events before the repository counters, the
-  repository trend and the fleet cadence are built — a repository's contributor count is a count of
-  *people*, and delivery cadence is a statement about what the team shipped. Every read that turns
-  events into rows goes through `loadPersonDirectory(store)` and `measuredEvents`; a sixth read that
-  aggregates events without them would leave one view measuring a build service that every other
-  view has dropped.
+- **An excluded account gets no row rather than a zeroed one.** `accumulateContributors` drops it,
+  so it never reaches `fleetReferenceOf`; a row of zeros would still be a name on the contributors
+  table and would still take part in the reference everybody is scored against.
+- **`measuredEvents` splits the event kinds by what each one measures, and that split is
+  load-bearing.** A commit, a pull request and a review are statements about a *person*, so an
+  excluded account's are dropped outright — a repository's contributor count is a count of people
+  and delivery cadence is a statement about what the team shipped. A build, a release and a tag are
+  facts about the repository's machinery that merely carry whoever triggered them, so they **stay**
+  and only the credit is stripped (`actorKey`, `actorName`, `actorAvatarUrl` nulled; both
+  `aggregateActivity` and `accumulateContributors` already ignore an actorless event). Dropping them
+  would do at read time exactly what excluding refuses to do at collection time: a platform
+  excluding its build service would zero `builds`, `buildsSucceeded` and `buildsFailed` for every
+  repository whose runs are scheduled, release or deployment pipelines — which `attributeMergedWork`
+  cannot re-attribute, having no commit to resolve — so `buildSuccessRate` would report "no build
+  reached a verdict" and `combineScore` would silently redistribute a tenth of the repository health
+  weight, fleet-wide. Excluding an account changes *who is credited*; it must never make a
+  repository look like it has no CI.
+- **Stored per-person measures need the same rule as the events.** `measuredContributorMetrics`
+  filters the WakaTime rows in `list_repository_summaries.ts` and `get_repository_trend.ts`, because
+  a repository's coding time is aggregated by *project* rather than by person and so has nowhere
+  else to apply it. The contributors path does not need it — `accumulateContributors` resolves every
+  row through the directory itself. Without it the two tabs disagree about the same hours: gone from
+  the person's row, still on the repository's, and still counted in that project's contributor
+  count.
+- **Every read that turns events into rows goes through `loadPersonDirectory(store)` and
+  `measuredEvents`**; a sixth read that aggregates events without them would leave one view
+  measuring a build service that every other view has dropped.
 - **Excluding deletes nothing, so including again is retroactive.** The events, the snapshots and
   the per-source measures stay exactly as they were collected and the exclusion is applied when the
   row is built — the same rule the link table follows, and for the same reason. Deleting the rows
