@@ -15,6 +15,18 @@ export const DAY_FORMAT = "yyyy-MM-dd";
 export const toDay = (instant: Date): Day =>
   DateTime.fromJSDate(instant, { zone: "utc" }).toFormat(DAY_FORMAT);
 
+/**
+ * The last day a half-open window `[from, to)` reaches into.
+ *
+ * A window ending exactly at midnight — a calendar month, or any range the
+ * dashboard resolves to a day boundary — never touches the day `to` names: its
+ * last instant is the millisecond before. Reading `toDay(to)` there would let
+ * one extra day of snapshots and per-day measures into every read, and a
+ * September would carry the first of October. A window ending mid-day keeps
+ * that day, because it does reach into it.
+ */
+export const lastDayOf = (to: Date): Day => toDay(new Date(to.getTime() - 1));
+
 /** Midnight UTC at the start of the given day. */
 export const startOfDay = (day: Day): Date =>
   DateTime.fromFormat(day, DAY_FORMAT, { zone: "utc" }).startOf("day").toJSDate();

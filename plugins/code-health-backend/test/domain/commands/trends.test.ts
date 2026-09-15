@@ -12,6 +12,7 @@ import { DiscoveredRepositoryBuilder } from "../../builders/discovered_repositor
 import { EventBuilder } from "../../builders/event_builder";
 import { WakaTimeMetricsBuilder } from "../../builders/wakatime_metrics_builder";
 import { InMemoryCodeHealthStore } from "../../doubles/in_memory_code_health_store";
+import { StubCatalogReader } from "../../doubles/stub_catalog_reader";
 import { StubDirectoryReader } from "../../doubles/stub_directory_reader";
 
 const NOW = new Date("2026-08-10T12:00:00.000Z");
@@ -169,14 +170,16 @@ describe("GetContributorTrend", () => {
 
     // then
     expect(trend.summary?.commits).toBe(2);
-    expect(trend.score?.value).toBe(100);
+    // The only person measured is the team average, and average is half — not
+    // the full marks the old top-figure reference handed out for being alone.
+    expect(trend.score?.value).toBe(50);
   });
 
   it("should score each bucket against the fleet in that bucket", async () => {
     // given
-    // A score is a share of the top figure anybody recorded in the same period.
-    // Scored against the whole window's peak instead, a normal week beside one
-    // exceptional week reads as a collapse.
+    // A score is a rate against the team's average rate in the same period.
+    // Scored against the whole window's average instead, a normal week beside
+    // one exceptional week reads as a collapse.
     const { store, discovered } = await seed();
     const [repository] = discovered;
     await ingest(store, repository.id, [
@@ -195,14 +198,89 @@ describe("GetContributorTrend", () => {
     });
 
     // then
-    // Alone on the 6th, so the top figure is their own; one against nine on the
-    // 7th, so a tenth of it.
+    // On the 6th the other person is a measured zero, so the mean of 1 and 0 is
+    // a half, twice that is one, and one commit is full marks. On the 7th one
+    // against nine: the mean of 1 and 9 is 5, and twice that is 10, so a tenth.
     const commits = (day: string) =>
       trend.points.find((point) => point.day === day)?.score.components.find(
         (component) => component.id === "commits",
       );
     expect(commits("2026-08-06")?.normalized).toBe(1);
-    expect(commits("2026-08-07")?.normalized).toBeCloseTo(0.1111, 3);
+    expect(commits("2026-08-07")?.normalized).toBeCloseTo(0.1, 3);
+  });
+
+  it("should count somebody quiet in a bucket as a measured zero in its reference", async () => {
+    // given
+    // The bucket's fleet is the window's people. Dropping whoever was quiet
+    // that day would put every bucket's mean above the headline's, and the
+    // line under the headline would sit below the number it claims to be.
+    const { store, discovered } = await seed();
+    const [repository] = discovered;
+    await ingest(store, repository.id, [
+      commit(repository.id, "2026-08-06T10:00:00.000Z", "dev@example.com"),
+      commit(repository.id, "2026-08-06T11:00:00.000Z", "dev@example.com"),
+      commit(repository.id, "2026-08-08T10:00:00.000Z", "other@example.com"),
+      commit(repository.id, "2026-08-08T11:00:00.000Z", "other@example.com"),
+    ]);
+
+    // when
+    const trend = await new GetContributorTrend({ store }).run({
+      key: "vcs:dev@example.com",
+      ...WINDOW,
+      bucket: "day",
+    });
+
+    // then
+    // Two against the other person's zero on the 6th: the mean is one, twice
+    // that is two, so full marks — not the half that being alone would score.
+    // Zero against two on the 8th is nothing, and a day neither did anything
+    // in has no mean to read against at all.
+    const commits = (day: string) =>
+      trend.points.find((point) => point.day === day)?.score.components.find(
+        (component) => component.id === "commits",
+      );
+    expect(commits("2026-08-06")?.normalized).toBe(1);
+    expect(commits("2026-08-08")?.normalized).toBe(0);
+    expect(commits("2026-08-07")?.normalized).toBeNull();
+  });
+
+  it("should not read the day a window ends at the start of", async () => {
+    // given
+    // A calendar month ends at the first instant of the next one, which the
+    // window never reaches into; that day's coding time is the next month's.
+    const { store } = await seed();
+    for (const [day, seconds] of [
+      ["2026-08-08", 1800],
+      ["2026-08-09", 9999],
+    ] as const) {
+      await store.saveContributorMetrics({
+        source: "wakatime",
+        day,
+        capturedAt: NOW,
+        metrics: new Map([
+          ["dev", WakaTimeMetricsBuilder.aDay(day).withSeconds(seconds).build()],
+        ]),
+      });
+    }
+    await store.saveIdentityLink({
+      source: "wakatime",
+      sourceKey: "dev",
+      entityRef: "user:default/jane",
+      origin: "manual",
+      linkedBy: "user:default/admin",
+      linkedAt: NOW,
+    });
+
+    // when
+    const trend = await new GetContributorTrend({ store }).run({
+      key: "user:default/jane",
+      ...WINDOW,
+      bucket: "day",
+    });
+
+    // then
+    expect(trend.summary?.wakaTimeMetrics?.totalSeconds).toBe(1800);
+    expect(trend.points.map((point) => point.day)).not.toContain("2026-08-09");
   });
 
   it("should fill Sonar forward from the baseline into a bucket with no snapshot", async () => {
@@ -315,7 +393,7 @@ describe("GetContributorTrend", () => {
 
   it("should look the person up in the catalog once and only for the key asked about", async () => {
     // given
-    // The other rows exist only to work out the fleet's top figures, and a name
+    // The other rows exist only to work out the fleet's mean rates, and a name
     // is not one of those — looking them all up would put a catalog query per
     // bucket on the request path.
     const { store, discovered } = await seed();
@@ -563,6 +641,39 @@ describe("GetContributorTrend", () => {
   });
 });
 
+describe("GetRepositoryTrend owner profiles", () => {
+  it("should still render the trend when the catalog cannot be reached", async () => {
+    // given
+    // Every figure on this page came out of the plugin's own database and is
+    // already in hand; a decoration that could not be fetched must not take
+    // the whole trend down with it.
+    const { store, discovered } = await seed();
+    const [repository] = discovered;
+    await store.syncRepositories({
+      discovered: [
+        {
+          ...repository!,
+          catalogFacts: { ...repository!.catalogFacts, ownerRef: "group:default/platform" },
+        },
+      ],
+      retentionDays: 365,
+      now: NOW,
+    });
+    const catalog = new StubCatalogReader().withFailure(new Error("catalog is down"));
+
+    // when
+    const trend = await new GetRepositoryTrend(store, catalog).run({
+      repositoryId: repository!.id,
+      ...WINDOW,
+      bucket: "day",
+    });
+
+    // then
+    expect(trend.summary.ownerRef).toBe("group:default/platform");
+    expect(trend.summary.ownerProfile).toBeNull();
+  });
+});
+
 describe("GetRepositoryTrend", () => {
   it("should emit one point per bucket with that bucket's counters", async () => {
     // given
@@ -770,6 +881,38 @@ describe("GetRepositoryTrend", () => {
     // then
     expect(trend.points.map((point) => point.day)).toEqual(["2026-08-01"]);
     expect(trend.points[0].summary.sonarMetrics?.qualityGateStatus).toBe("OK");
+  });
+
+  it("should not grade the headline with a snapshot from the day the window ends at the start of", async () => {
+    // given
+    // A calendar month ends at the first instant of the next one, and the
+    // snapshot taken that morning describes the month after, not this one.
+    const { store, discovered } = await seed();
+    const [repository] = discovered;
+    await snapshot(
+      store,
+      repository.id,
+      "2026-08-08",
+      aPayload({ sonarMetrics: aSonar({ qualityGateStatus: "OK" }) }),
+    );
+    await snapshot(
+      store,
+      repository.id,
+      "2026-08-09",
+      aPayload({ sonarMetrics: aSonar({ qualityGateStatus: "ERROR" }) }),
+    );
+
+    // when
+    const trend = await new GetRepositoryTrend(store).run({
+      repositoryId: repository.id,
+      ...WINDOW,
+      bucket: "day",
+    });
+
+    // then
+    const [last] = trend.points.slice(-1);
+    expect(trend.summary.sonarMetrics?.qualityGateStatus).toBe("OK");
+    expect(last?.summary.sonarMetrics?.qualityGateStatus).toBe("OK");
   });
 
   it("should refuse a repository it does not track", async () => {

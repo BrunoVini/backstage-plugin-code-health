@@ -108,7 +108,7 @@ export const codeHealthPlugin = createBackendPlugin({
         // Shared by the repositories table and by the ownership route, which
         // filters the same rows rather than computing a second set that could
         // disagree with the first.
-        const repositories = new ListRepositorySummaries(store);
+        const repositories = new ListRepositorySummaries(store, catalogReader);
 
         // Read once and shared, because the capabilities probe and the
         // productivity score have to agree about what is switched on: a
@@ -132,7 +132,7 @@ export const codeHealthPlugin = createBackendPlugin({
               directory: catalogReader,
               capabilities,
             }),
-            repositoryTrend: new GetRepositoryTrend(store),
+            repositoryTrend: new GetRepositoryTrend(store, catalogReader),
             owned: new ListOwnedRepositories(repositories, catalogReader),
             identities: new ListIdentities(store, catalogReader),
             links: new LinkIdentity(store, catalogReader),

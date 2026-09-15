@@ -27,6 +27,7 @@ import type {
   IntegrationCapabilities,
   ProductivityScore,
   ScoreBand,
+  TimeWindow,
 } from "@rios0rios0/backstage-plugin-code-health-common";
 import {
   catalogEntityPath,
@@ -36,6 +37,7 @@ import {
   NO_INTEGRATIONS,
   productivityComponentsFor,
   scoreBand,
+  windowDaysOf,
 } from "@rios0rios0/backstage-plugin-code-health-common";
 import { Link as RouterLink } from "react-router-dom";
 import { contributorDetailRouteRef } from "../../routes";
@@ -56,6 +58,15 @@ interface ContributorsTableProps {
   contributors: ContributorSummary[];
   totalCount: number;
   isLoading: boolean;
+  /**
+   * The window the rows describe, which every output figure is read as a rate
+   * over.
+   *
+   * Passed in rather than derived from the rows: the rows carry no dates, and
+   * the score has to divide by the period that was *asked for* rather than by
+   * whatever happens to have activity in it.
+   */
+  window: TimeWindow;
   /**
    * Which integrations the backend was configured with.
    *
@@ -333,7 +344,7 @@ const SONAR_HELP =
   "Sonar measures a repository, not a person. This is the total over the repositories this person committed to or merged into in the window — what the code they worked on looks like, not what they wrote — so two people on the same repository show the same figure, and reviewing or building there does not count.";
 
 const PRODUCTIVITY_HELP =
-  "One score out of 100 over the whole window. Output — commits, merged pull requests, churn and reviews, and the coding time and resolved tickets of whichever integrations are configured — is read as a share of the top figure anybody recorded in the same window, so a quiet month for the whole team is a quiet month rather than everybody's failure. Documentation written is read the same way but over Confluence's own trailing window, which the range picker does not move. Reliability and quality — the pipeline success rate, the gate and coverage of the code touched, and how much resolved work stayed resolved — are absolute. Anything that could not be measured is left out rather than scored as zero, so a dash means nothing measurable was recorded. Hover a score for the workings.";
+  "One score out of 100 over the whole window. Output — commits, merged pull requests, churn and reviews, and the coding time and resolved tickets of whichever integrations are configured — is read as a rate: each total divided by the days the window spans, against the team's average rate over the same period, with twice that average scoring full marks. A quiet month for the whole team is then a quiet month rather than everybody's failure. The denominator is the window rather than the days somebody was active, so a rate is output per elapsed day: a mid-window start or a fortnight of leave lowers it. Documentation written is compared the same way but as a total over Confluence's own trailing window, which the range picker does not move. Reliability and quality — the pipeline success rate, the gate and coverage of the code touched, and how much resolved work stayed resolved — are absolute. Anything that could not be measured is left out rather than scored as zero, so a dash means nothing measurable was recorded. Hover a score for the workings.";
 
 /** A list a person can read, rather than one joined with commas throughout. */
 const sentenceList = (items: readonly string[]): string =>
@@ -581,6 +592,7 @@ export const ContributorsTable = ({
   contributors,
   totalCount,
   isLoading,
+  window,
   capabilities = NO_INTEGRATIONS,
 }: ContributorsTableProps) => {
   const [sorting, setSorting] = useState<SortingState>([
@@ -589,8 +601,12 @@ export const ContributorsTable = ({
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
 
   // The score is relative, so the column cannot exist before the rows do: every
-  // figure is read against the top one anybody recorded in the same window.
-  const reference = useMemo(() => fleetReferenceOf(contributors), [contributors]);
+  // figure is read as a rate against the team's average rate in the same window.
+  const days = windowDaysOf(window);
+  const reference = useMemo(
+    () => fleetReferenceOf(contributors, days),
+    [contributors, days],
+  );
 
   // Held on the three flags rather than on the object, because the productivity
   // column now needs the whole of it and caches a score per row inside itself.

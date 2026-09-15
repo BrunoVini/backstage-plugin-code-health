@@ -6,7 +6,10 @@ import {
   type Entity,
 } from "@backstage/catalog-model";
 import type { CatalogService } from "@backstage/plugin-catalog-node";
-import type { DirectoryUser } from "@rios0rios0/backstage-plugin-code-health-common";
+import type {
+  DirectoryUser,
+  EntityProfile,
+} from "@rios0rios0/backstage-plugin-code-health-common";
 import type { EntityFilter } from "../../domain/entities/ingestion_settings";
 import type { CatalogReader, CatalogUser } from "../../domain/services/catalog_reader";
 import type { DirectoryReader } from "../../domain/services/identity_resolver";
@@ -32,6 +35,15 @@ const REQUIRED_FIELDS = [
 
 /** Discovery never reads a profile, so the user lookup asks for its own fields. */
 const USER_FIELDS = ["kind", "metadata.name", "metadata.namespace", "spec.profile"];
+
+/**
+ * An owner's name and photograph, whatever kind the entity is.
+ *
+ * `kind` is asked for because the reference has to be rebuilt from the entity
+ * itself: the same lookup answers for `User` and `Group` owners, and hardcoding
+ * either would key half the fleet's rows under a reference nobody asked for.
+ */
+const PROFILE_FIELDS = ["kind", "metadata.name", "metadata.namespace", "spec.profile"];
 
 /** Walking the group tree needs the edges and the name, and nothing else. */
 const OWNERSHIP_FIELDS = ["kind", "metadata.name", "metadata.namespace", "relations"];
@@ -181,6 +193,44 @@ export class BackstageCatalogReader implements CatalogReader, DirectoryReader {
     );
 
     return items.map(toDirectoryUser);
+  }
+
+  async getEntityProfiles(
+    entityRefs: readonly string[],
+  ): Promise<Map<string, EntityProfile>> {
+    const wanted = [...new Set(entityRefs)];
+    if (wanted.length === 0) return new Map();
+
+    const credentials = await this.auth.getOwnServiceCredentials();
+    const { items } = await this.catalog.getEntitiesByRefs(
+      { entityRefs: wanted, fields: PROFILE_FIELDS },
+      { credentials },
+    );
+
+    const found = new Map<string, EntityProfile>();
+    for (const [index, item] of items.entries()) {
+      // Positional, with undefined for a reference the catalog does not hold —
+      // an owner who has left the organisation since the YAML was written.
+      const ref = wanted[index];
+      if (item === undefined || ref === undefined) continue;
+
+      const profile = (item.spec as { profile?: Record<string, unknown> } | undefined)
+        ?.profile;
+      found.set(ref, {
+        // Keyed by the reference that was *asked for*, so the caller can look
+        // the answer up with the string it already holds; the entity's own
+        // spelling of it is not guaranteed to match, and does not need to.
+        entityRef: ref,
+        // The entity's own name is the fallback, which is what the slug already
+        // showed — so a row renders a name either way rather than going blank.
+        displayName:
+          typeof profile?.displayName === "string" && profile.displayName !== ""
+            ? profile.displayName
+            : item.metadata.name,
+        picture: typeof profile?.picture === "string" ? profile.picture : null,
+      });
+    }
+    return found;
   }
 
   async getUsersByRef(entityRefs: readonly string[]): Promise<Map<string, DirectoryUser>> {

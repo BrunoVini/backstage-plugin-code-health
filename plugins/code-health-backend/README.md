@@ -31,10 +31,12 @@ Three routes answer a question about one row of the dashboard rather than about 
 reference such as `user%3Adefault%2Fjane`, and an unlinked account's is `vcs%3Ajane%40acme.com`.
 
 Every bucket of a person's trend is scored against **the fleet in that same bucket**, not against
-the whole window. A score is a share of the top figure anybody recorded in the same period, so a
-quiet week beside one exceptional week reads as a quiet week rather than as a collapse. A bucket the
-person did nothing in still gets a point — an all-zero row carrying their name — because closing
-over a fortnight off would draw it as a shorter, busier month.
+the whole window. A score is a rate against the team's mean rate over the same period, so a quiet
+week beside one exceptional week reads as a quiet week rather than as a collapse. The fleet in a
+bucket is the window's people: somebody quiet in a bucket is a measured zero there rather than a row
+left out of the mean, so the line under the headline is the same quantity as the headline. A bucket
+the person did nothing in still gets a point — an all-zero row carrying their name — because
+closing over a fortnight off would draw it as a shorter, busier month.
 
 Sonar, compliance and badge figures on a trend come from the most recent daily snapshot at or before
 each bucket's last day, filled forward when a snapshot task missed a run. None of them can be

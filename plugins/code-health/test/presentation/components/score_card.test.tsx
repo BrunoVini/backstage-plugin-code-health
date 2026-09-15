@@ -12,7 +12,7 @@ const aScore = (overrides: Partial<Score> = {}): Score => ({
       weight: 0.2,
       value: 12,
       normalized: 0.6,
-      detail: "12 commits against the window's top figure of 20",
+      detail: "12 commits a day against the team's average of 20 commits a day",
     },
     {
       id: "pipelineSuccessRate",
@@ -46,7 +46,7 @@ describe("ScoreCard", () => {
     // then
     const rows = screen.getAllByRole("listitem");
     expect(rows.map((row) => row.getAttribute("aria-label"))).toEqual([
-      "Commits: 12 commits against the window's top figure of 20",
+      "Commits: 12 commits a day against the team's average of 20 commits a day",
       "Pipeline success: no pipeline run reached a verdict",
     ]);
     expect(screen.getByText("20%")).toBeInTheDocument();

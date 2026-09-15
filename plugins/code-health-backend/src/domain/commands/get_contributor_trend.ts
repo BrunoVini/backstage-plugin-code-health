@@ -13,6 +13,7 @@ import {
   computeProductivityScore,
   fleetReferenceOf,
   NO_INTEGRATIONS,
+  windowDaysOf,
 } from "@rios0rios0/backstage-plugin-code-health-common";
 import { bucketEnd, bucketsInWindow } from "../entities/bucket";
 import type { CodeHealthEvent } from "../entities/code_health_event";
@@ -21,7 +22,7 @@ import {
   aggregateContributorSummaries,
   zeroContributorSummary,
 } from "../entities/contributor_aggregation";
-import { startOfDay, toDay, type Day } from "../entities/day";
+import { daysBetween, lastDayOf, startOfDay, toDay, type Day } from "../entities/day";
 import { loadPersonDirectory } from "../entities/person_directory";
 import type { RepositorySnapshot } from "../entities/repository_snapshot";
 import type {
@@ -120,10 +121,17 @@ export class GetContributorTrend {
    * weekly trend into twenty-six of them.
    *
    * Every bucket is scored against the fleet *in that bucket*, not against the
-   * whole window: a score is a share of the top figure anybody recorded in the
-   * same period, and comparing a quiet week against a six-month peak would
+   * whole window: a score is a rate against the team's mean rate over the same
+   * period, and comparing a quiet week against a six-month average would
    * report a normal week as a collapse. It is also why the whole fleet has to
    * be aggregated per bucket rather than only the person being asked about.
+   *
+   * The fleet in a bucket is the window's people, though, not whoever happened
+   * to be active in it. Somebody quiet for a fortnight is a measured zero for
+   * that fortnight — exactly what the person the page is about is given below
+   * when they were the quiet one — rather than a row that was never asked.
+   * Dropping the quiet ones would put every bucket's mean above the headline's,
+   * and the "Score over time" line would sit under the number it claims to be.
    */
   async run(input: {
     key: string;
@@ -132,7 +140,9 @@ export class GetContributorTrend {
     bucket: TimeSeriesBucket;
   }): Promise<ContributorTrend> {
     const from = toDay(input.from);
-    const to = toDay(input.to);
+    // The day before `to` when the window ends at midnight, so a month does not
+    // read the first snapshot and the first day of measures of the month after.
+    const to = lastDayOf(input.to);
     const capabilities = this.options.capabilities ?? NO_INTEGRATIONS;
 
     const [
@@ -179,7 +189,7 @@ export class GetContributorTrend {
     });
 
     // One lookup, for the one person the page is about. The other rows are only
-    // ever used to work out the fleet's top figures, and a name is not one.
+    // ever used to work out the fleet's mean rates, and a name is not one.
     const users =
       this.options.directory === undefined || !input.key.startsWith("user:")
         ? new Map()
@@ -194,19 +204,41 @@ export class GetContributorTrend {
     const score =
       summary === null
         ? null
-        : computeProductivityScore(summary, fleetReferenceOf(windowRows), capabilities);
+        : computeProductivityScore(
+            summary,
+            fleetReferenceOf(
+              windowRows,
+              windowDaysOf({ from: input.from.toISOString(), to: input.to.toISOString() }),
+            ),
+            capabilities,
+          );
 
     const points = bucketsInWindow(input.from, input.to, input.bucket).map((start) => {
       const last = bucketEnd(start, input.bucket, to);
-      const rows = aggregateContributorSummaries(
-        accumulateContributors({
-          events: eventsWithin(events, start, last),
-          wakaTime: rowsWithin(wakaTimeRows, start, last),
-          jira: rowsWithin(jiraRows, start, last),
-          confluence: new Map<string, ConfluenceContributorMetrics>(),
-          people,
-        }),
-        { ...context, sonarByRepository: sonar.at(last) },
+      // Both ends are days and the last one is inclusive, so a bucket that
+      // starts and ends on the same day spans one day rather than none.
+      const bucketDays = daysBetween(start, last) + 1;
+      const active = new Map(
+        aggregateContributorSummaries(
+          accumulateContributors({
+            events: eventsWithin(events, start, last),
+            wakaTime: rowsWithin(wakaTimeRows, start, last),
+            jira: rowsWithin(jiraRows, start, last),
+            confluence: new Map<string, ConfluenceContributorMetrics>(),
+            people,
+          }),
+          { ...context, sonarByRepository: sonar.at(last) },
+        ).map((candidate) => [candidate.key, candidate] as const),
+      );
+
+      // The bucket's fleet is the window's: everybody the window measured, with
+      // a zero row for anyone quiet in this bucket. A zero row keeps its churn
+      // and integration figures null, so it is a measured nothing for commits,
+      // pull requests and reviews and stays out of every mean nothing was
+      // recorded for.
+      const rows = windowRows.map(
+        (windowRow) =>
+          active.get(windowRow.key) ?? zeroContributorSummary(windowRow.key, windowRow),
       );
 
       // A bucket the person was absent from is still a point. Closing over it
@@ -226,7 +258,10 @@ export class GetContributorTrend {
         // every point while measured on the headline — and a line folded from
         // one component fewer than the card above it would sit below that
         // card for the whole window, claiming to be the same quantity.
-        score: computeProductivityScore(row, fleetReferenceOf(rows), {
+        // The bucket's own length, not the window's: a rate is only comparable
+        // against a mean taken over the same period, and the last bucket of a
+        // weekly series is routinely a part week.
+        score: computeProductivityScore(row, fleetReferenceOf(rows, bucketDays), {
           ...capabilities,
           confluence: false,
         }),

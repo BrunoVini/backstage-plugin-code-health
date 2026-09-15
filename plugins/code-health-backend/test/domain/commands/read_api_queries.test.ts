@@ -10,6 +10,7 @@ import { DiscoveredRepositoryBuilder } from "../../builders/discovered_repositor
 import { EventBuilder } from "../../builders/event_builder";
 import { WakaTimeMetricsBuilder } from "../../builders/wakatime_metrics_builder";
 import { InMemoryCodeHealthStore } from "../../doubles/in_memory_code_health_store";
+import { StubCatalogReader } from "../../doubles/stub_catalog_reader";
 import { StubDirectoryReader } from "../../doubles/stub_directory_reader";
 
 const NOW = new Date("2026-08-10T12:00:00.000Z");
@@ -55,6 +56,112 @@ const seed = async (repositories = 1) => {
 
 const commit = (repositoryId: string, at: string, actor = "dev@example.com") =>
   EventBuilder.commit().withRepository(repositoryId).withActor(actor).at(at).withChurn(10, 2, 1);
+
+describe("ListRepositorySummaries owner profiles", () => {
+  it("should resolve each owner to the name and photograph the catalog holds", async () => {
+    // given
+    const { store, discovered } = await seed(1);
+    const [repository] = discovered;
+    await store.syncRepositories({
+      discovered: [{ ...repository!, catalogFacts: { ...repository!.catalogFacts, ownerRef: "group:default/platform" } }],
+      retentionDays: 365,
+      now: NOW,
+    });
+    const catalog = new StubCatalogReader().withProfiles({
+      "group:default/platform": { displayName: "Platform", picture: "https://example.com/p.png" },
+    });
+
+    // when
+    const [summary] = await new ListRepositorySummaries(store, catalog).run(WINDOW);
+
+    // then
+    expect(summary?.ownerProfile).toEqual({
+      entityRef: "group:default/platform",
+      displayName: "Platform",
+      picture: "https://example.com/p.png",
+    });
+  });
+
+  it("should ask once for the distinct owners rather than once per row", async () => {
+    // given
+    // Two hundred repositories in an organisation share a handful of teams, and
+    // a lookup per row would be two hundred catalog queries per dashboard load.
+    const { store, discovered } = await seed(3);
+    await store.syncRepositories({
+      discovered: discovered.map((repository) => ({
+        ...repository,
+        catalogFacts: { ...repository.catalogFacts, ownerRef: "group:default/platform" },
+      })),
+      retentionDays: 365,
+      now: NOW,
+    });
+    const catalog = new StubCatalogReader().withProfiles({
+      "group:default/platform": { displayName: "Platform" },
+    });
+
+    // when
+    await new ListRepositorySummaries(store, catalog).run(WINDOW);
+
+    // then
+    expect(catalog.profileLookups).toHaveLength(1);
+    expect(catalog.profileLookups[0]).toEqual(["group:default/platform"]);
+  });
+
+  it("should leave the profile null for an owner the catalog no longer holds", async () => {
+    // given
+    // A person who has left is a row with no photograph, not a failed request.
+    const { store, discovered } = await seed(1);
+    const [repository] = discovered;
+    await store.syncRepositories({
+      discovered: [{ ...repository!, catalogFacts: { ...repository!.catalogFacts, ownerRef: "user:default/ghost" } }],
+      retentionDays: 365,
+      now: NOW,
+    });
+
+    // when
+    const [summary] = await new ListRepositorySummaries(store, new StubCatalogReader()).run(
+      WINDOW,
+    );
+
+    // then
+    expect(summary?.ownerRef).toBe("user:default/ghost");
+    expect(summary?.ownerProfile).toBeNull();
+  });
+
+  it("should render slugs rather than failing when the catalog is unreachable", async () => {
+    // given
+    // Every other field on these rows came out of this plugin's own database
+    // and is already in hand; refusing to render two hundred repositories
+    // because a decoration could not be fetched trades a complete answer for
+    // no answer.
+    const { store, discovered } = await seed(1);
+    const [repository] = discovered;
+    await store.syncRepositories({
+      discovered: [{ ...repository!, catalogFacts: { ...repository!.catalogFacts, ownerRef: "group:default/platform" } }],
+      retentionDays: 365,
+      now: NOW,
+    });
+    const catalog = new StubCatalogReader().withFailure(new Error("catalog is down"));
+
+    // when
+    const [summary] = await new ListRepositorySummaries(store, catalog).run(WINDOW);
+
+    // then
+    expect(summary?.ownerRef).toBe("group:default/platform");
+    expect(summary?.ownerProfile).toBeNull();
+  });
+
+  it("should render slugs rather than failing when no catalog is wired in", async () => {
+    // given
+    const { store } = await seed(1);
+
+    // when
+    const [summary] = await new ListRepositorySummaries(store).run(WINDOW);
+
+    // then
+    expect(summary?.ownerProfile).toBeNull();
+  });
+});
 
 describe("ListRepositorySummaries", () => {
   it("should read a snapshot written before the integration fields existed", async () => {
@@ -139,6 +246,32 @@ describe("ListRepositorySummaries", () => {
     await store.saveSnapshot({
       repositoryId: repository.id,
       day: "2026-08-20",
+      capturedAt: NOW,
+      payload: aSnapshotPayload({ primaryLanguage: "Rust" }),
+    });
+
+    // when
+    const [summary] = await new ListRepositorySummaries(store).run(WINDOW);
+
+    // then
+    expect(summary.primaryLanguage).toBe("Go");
+  });
+
+  it("should not read a snapshot from the day the window ends at the start of", async () => {
+    // given
+    // A calendar month ends at the first instant of the next one, and the
+    // snapshot taken that morning describes the month after, not this one.
+    const { store, discovered } = await seed();
+    const [repository] = discovered;
+    await store.saveSnapshot({
+      repositoryId: repository.id,
+      day: "2026-08-10",
+      capturedAt: NOW,
+      payload: aSnapshotPayload({ primaryLanguage: "Go" }),
+    });
+    await store.saveSnapshot({
+      repositoryId: repository.id,
+      day: "2026-08-11",
       capturedAt: NOW,
       payload: aSnapshotPayload({ primaryLanguage: "Rust" }),
     });
@@ -1028,7 +1161,9 @@ describe("ListContributorSummaries", () => {
     for (const [day, seconds] of [
       ["2026-08-09", 3600],
       ["2026-08-10", 1800],
-      // Outside the window, and must not be counted.
+      // The window ends at the first instant of the 11th and never reaches into
+      // it, so neither day may be counted.
+      ["2026-08-11", 9999],
       ["2026-08-12", 9999],
     ] as const) {
       await store.saveContributorMetrics({

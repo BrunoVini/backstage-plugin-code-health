@@ -10,6 +10,7 @@ import {
 const aRepository = (overrides: Partial<RepositorySummary> = {}): RepositorySummary => ({
   id: "repo-1",
   entityRef: "component:default/repo-1",
+  ownerProfile: null,
   ownerRef: "group:default/platform",
   platform: "github",
   name: "repo-1",

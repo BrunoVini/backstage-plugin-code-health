@@ -137,6 +137,22 @@ export type {
   JiraWindow,
 } from "./jira_metrics";
 
+export {
+  contributorRatesOf,
+  describeRate,
+  describeRatePair,
+  formatRate,
+  legibleRate,
+  RATE_PERIOD_IDS,
+  RATE_PERIODS,
+  windowDaysOf,
+} from "./contributor_rates";
+export type {
+  ContributorRates,
+  ContributorRateSet,
+  RatePeriodId,
+} from "./contributor_rates";
+
 export { computeRate } from "./contributor_summary";
 export type { ChurnUnit, ContributorSummary } from "./contributor_summary";
 
@@ -176,6 +192,7 @@ export type { Score, ScoreBand, ScoreComponent, ScoreComponentDefinition } from 
 export {
   computeProductivityScore,
   EMPTY_FLEET_REFERENCE,
+  FLEET_RATE_CEILING,
   fleetReferenceOf,
   PRODUCTIVITY_COMPONENTS,
   productivityComponentsFor,
@@ -205,7 +222,7 @@ export {
 export type { ContributorTrendPoint, RepositoryTrendPoint } from "./trend";
 
 export { DEFAULT_OWNER_KIND, ownerEntityRef } from "./ownership";
-export type { OwnershipInfo } from "./ownership";
+export type { EntityProfile, OwnershipInfo } from "./ownership";
 
 export type { Tag } from "./tag";
 

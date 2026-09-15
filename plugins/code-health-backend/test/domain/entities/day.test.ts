@@ -4,6 +4,7 @@ import {
   daysBetween,
   daysInRange,
   isDay,
+  lastDayOf,
   parseChunkDays,
   startOfDay,
   toDay,
@@ -33,6 +34,32 @@ describe("toDay", () => {
 
     // then
     expect(result).toBe("2026-08-10");
+  });
+});
+
+describe("lastDayOf", () => {
+  it("should end on the day before a window that stops at midnight", () => {
+    // given
+    // A calendar month resolves to the first instant of the next month, which
+    // the window never reaches into.
+    const to = new Date("2026-10-01T00:00:00.000Z");
+
+    // when
+    const result = lastDayOf(to);
+
+    // then
+    expect(result).toBe("2026-09-30");
+  });
+
+  it("should keep the day of a window that stops inside it", () => {
+    // given
+    const to = new Date("2026-09-15T14:23:00.000Z");
+
+    // when
+    const result = lastDayOf(to);
+
+    // then
+    expect(result).toBe("2026-09-15");
   });
 });
 

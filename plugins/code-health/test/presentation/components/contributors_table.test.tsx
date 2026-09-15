@@ -19,6 +19,12 @@ import {
 const render = (ui: React.ReactElement) =>
   renderInTestApp(ui, { mountedRoutes: { "/": rootRouteRef } });
 
+/**
+ * A seven-day window, so every output figure is a rate over a period the test
+ * can reason about. The table needs it because the score divides by it.
+ */
+const WINDOW = { from: "2026-08-01T00:00:00.000Z", to: "2026-08-08T00:00:00.000Z" };
+
 const ALL_INTEGRATIONS: IntegrationCapabilities = {
   wakatime: true,
   jira: true,
@@ -57,7 +63,7 @@ describe("ContributorsTable", () => {
 
     // when
     await render(
-      <ContributorsTable contributors={contributors} totalCount={1} isLoading={false} />,
+      <ContributorsTable window={WINDOW} contributors={contributors} totalCount={1} isLoading={false} />,
     );
 
     // then
@@ -83,7 +89,7 @@ describe("ContributorsTable", () => {
 
     // when
     await render(
-      <ContributorsTable contributors={contributors} totalCount={1} isLoading={false} />,
+      <ContributorsTable window={WINDOW} contributors={contributors} totalCount={1} isLoading={false} />,
     );
 
     // then
@@ -113,7 +119,7 @@ describe("ContributorsTable", () => {
 
     // when
     await render(
-      <ContributorsTable contributors={contributors} totalCount={1} isLoading={false} />,
+      <ContributorsTable window={WINDOW} contributors={contributors} totalCount={1} isLoading={false} />,
     );
 
     // then
@@ -143,7 +149,7 @@ describe("ContributorsTable", () => {
 
     // when
     await render(
-      <ContributorsTable contributors={contributors} totalCount={1} isLoading={false} />,
+      <ContributorsTable window={WINDOW} contributors={contributors} totalCount={1} isLoading={false} />,
     );
 
     // then
@@ -153,6 +159,7 @@ describe("ContributorsTable", () => {
   const defaultProps = {
     totalCount: 0,
     isLoading: false,
+    window: WINDOW,
   };
 
   it("should render 'No contributors found.' when contributors is empty", async () => {
@@ -187,6 +194,7 @@ describe("ContributorsTable", () => {
     // when
     await render(
       <ContributorsTable
+        window={WINDOW}
         contributors={contributors}
         totalCount={1}
         isLoading={false}
@@ -207,6 +215,7 @@ describe("ContributorsTable", () => {
     // when
     await render(
       <ContributorsTable
+        window={WINDOW}
         contributors={contributors}
         totalCount={1}
         isLoading={false}
@@ -227,6 +236,7 @@ describe("ContributorsTable", () => {
     // when
     await render(
       <ContributorsTable
+        window={WINDOW}
         contributors={contributors}
         totalCount={1}
         isLoading={false}
@@ -248,6 +258,7 @@ describe("ContributorsTable", () => {
     // when
     await render(
       <ContributorsTable
+        window={WINDOW}
         contributors={contributors}
         totalCount={1}
         isLoading={false}
@@ -275,6 +286,7 @@ describe("ContributorsTable", () => {
     // when
     await render(
       <ContributorsTable
+        window={WINDOW}
         contributors={contributors}
         totalCount={1}
         isLoading={false}
@@ -296,6 +308,7 @@ describe("ContributorsTable", () => {
     // when
     await render(
       <ContributorsTable
+        window={WINDOW}
         contributors={contributors}
         totalCount={1}
         isLoading={false}
@@ -331,6 +344,7 @@ describe("ContributorsTable", () => {
     // when
     const { rerender } = await render(
       <ContributorsTable
+        window={WINDOW}
         contributors={[withoutAi]}
         totalCount={1}
         isLoading={false}
@@ -344,6 +358,7 @@ describe("ContributorsTable", () => {
     // when
     rerender(
       <ContributorsTable
+        window={WINDOW}
         contributors={[withAi]}
         totalCount={1}
         isLoading={false}
@@ -367,7 +382,7 @@ describe("ContributorsTable", () => {
 
     // when
     await render(
-      <ContributorsTable contributors={contributors} totalCount={1} isLoading={false} />,
+      <ContributorsTable window={WINDOW} contributors={contributors} totalCount={1} isLoading={false} />,
     );
 
     // then
@@ -387,7 +402,7 @@ describe("ContributorsTable", () => {
 
     // when
     await render(
-      <ContributorsTable contributors={[contributor]} totalCount={1} isLoading={false} />,
+      <ContributorsTable window={WINDOW} contributors={[contributor]} totalCount={1} isLoading={false} />,
     );
 
     // then
@@ -404,6 +419,7 @@ describe("ContributorsTable", () => {
     // when
     await render(
       <ContributorsTable
+        window={WINDOW}
         contributors={contributors}
         totalCount={5}
         isLoading={false}
@@ -522,7 +538,7 @@ describe("ContributorsTable churn and pull request columns", () => {
 
     // when
     await render(
-      <ContributorsTable contributors={contributors} totalCount={1} isLoading={false} />,
+      <ContributorsTable window={WINDOW} contributors={contributors} totalCount={1} isLoading={false} />,
     );
 
     // then
@@ -541,7 +557,7 @@ describe("ContributorsTable churn and pull request columns", () => {
 
     // when
     await render(
-      <ContributorsTable contributors={contributors} totalCount={1} isLoading={false} />,
+      <ContributorsTable window={WINDOW} contributors={contributors} totalCount={1} isLoading={false} />,
     );
 
     // then
@@ -558,7 +574,7 @@ describe("ContributorsTable churn and pull request columns", () => {
 
     // when
     await render(
-      <ContributorsTable contributors={contributors} totalCount={1} isLoading={false} />,
+      <ContributorsTable window={WINDOW} contributors={contributors} totalCount={1} isLoading={false} />,
     );
 
     // then
@@ -579,7 +595,7 @@ describe("ContributorsTable churn and pull request columns", () => {
 
     // when
     await render(
-      <ContributorsTable contributors={contributors} totalCount={1} isLoading={false} />,
+      <ContributorsTable window={WINDOW} contributors={contributors} totalCount={1} isLoading={false} />,
     );
 
     // then
@@ -597,7 +613,7 @@ describe("ContributorsTable churn and pull request columns", () => {
 
     // when
     await render(
-      <ContributorsTable contributors={contributors} totalCount={1} isLoading={false} />,
+      <ContributorsTable window={WINDOW} contributors={contributors} totalCount={1} isLoading={false} />,
     );
 
     // then
@@ -621,7 +637,7 @@ describe("ContributorsTable churn and pull request columns", () => {
 
     // when
     await render(
-      <ContributorsTable contributors={contributors} totalCount={1} isLoading={false} />,
+      <ContributorsTable window={WINDOW} contributors={contributors} totalCount={1} isLoading={false} />,
     );
 
     // then
@@ -634,7 +650,7 @@ describe("ContributorsTable churn and pull request columns", () => {
 
     // when
     await render(
-      <ContributorsTable contributors={contributors} totalCount={1} isLoading={false} />,
+      <ContributorsTable window={WINDOW} contributors={contributors} totalCount={1} isLoading={false} />,
     );
 
     // then
@@ -667,7 +683,7 @@ describe("ContributorsTable productivity column", () => {
 
     // when
     await render(
-      <ContributorsTable contributors={contributors} totalCount={2} isLoading={false} />,
+      <ContributorsTable window={WINDOW} contributors={contributors} totalCount={2} isLoading={false} />,
     );
 
     // then
@@ -682,16 +698,39 @@ describe("ContributorsTable productivity column", () => {
     // given
     // A score on a row carrying somebody's name is an accusation with no
     // evidence until a reader can see which figure pulled it down.
+    //
+    // Two rows, because the output half of the score is now read against the
+    // team's average rate: one person alone is that average by definition and
+    // lands mid-band however hard they worked. The leader here is well above
+    // it, which is what a "good" band has to mean.
     const contributors = [
       ContributorBuilder.create()
-        .withDisplayName("solo")
+        .withDisplayName("leader")
+        .withKey("vcs:leader")
+        .withCommits(20)
+        .withPullRequests(10, 10)
+        .withReviewsGiven(10)
+        .withLinesOfCode(1000)
         .withPipelineRuns({ runs: 10, succeeded: 9, failed: 1 })
+        .build(),
+      ContributorBuilder.create()
+        .withDisplayName("quiet")
+        .withKey("vcs:quiet")
+        .withCommits(1)
+        .withPullRequests(1, 1)
+        .withReviewsGiven(1)
+        .withLinesOfCode(10)
         .build(),
     ];
 
     // when
     await render(
-      <ContributorsTable contributors={contributors} totalCount={1} isLoading={false} />,
+      <ContributorsTable
+        window={WINDOW}
+        contributors={contributors}
+        totalCount={2}
+        isLoading={false}
+      />,
     );
 
     // then
@@ -701,6 +740,27 @@ describe("ContributorsTable productivity column", () => {
     expect(score.closest("[title]")?.getAttribute("title")).toContain(
       "9 of 10 decided runs succeeded",
     );
+  });
+
+  it("should band the only person measured as average rather than as excellent", async () => {
+    // given
+    // Being the sole row is not an achievement: they are the team average, and
+    // the old top-figure reference used to hand them full marks for it.
+    const contributors = [ContributorBuilder.create().withDisplayName("solo").build()];
+
+    // when
+    await render(
+      <ContributorsTable
+        window={WINDOW}
+        contributors={contributors}
+        totalCount={1}
+        isLoading={false}
+      />,
+    );
+
+    // then
+    const cell = within(screen.getAllByRole("row")[2]).getAllByRole("cell")[1];
+    expect(within(cell).getByText(/^\d+$/u)).toHaveAttribute("data-band", "fair");
   });
 
   it("should show a dash rather than a zero when nothing could be measured", async () => {
@@ -720,7 +780,7 @@ describe("ContributorsTable productivity column", () => {
 
     // when
     await render(
-      <ContributorsTable contributors={contributors} totalCount={1} isLoading={false} />,
+      <ContributorsTable window={WINDOW} contributors={contributors} totalCount={1} isLoading={false} />,
     );
 
     // then
@@ -735,7 +795,7 @@ describe("ContributorsTable productivity column", () => {
       ContributorBuilder.create().withDisplayName("busy").withCommits(90).build(),
     ];
     await render(
-      <ContributorsTable contributors={contributors} totalCount={2} isLoading={false} />,
+      <ContributorsTable window={WINDOW} contributors={contributors} totalCount={2} isLoading={false} />,
     );
     const leadingName = () =>
       within(screen.getAllByRole("row")[2]).getAllByRole("cell")[0].textContent;
@@ -761,12 +821,12 @@ describe("ContributorsTable productivity column", () => {
 
     // when
     await render(
-      <ContributorsTable contributors={contributors} totalCount={1} isLoading={false} />,
+      <ContributorsTable window={WINDOW} contributors={contributors} totalCount={1} isLoading={false} />,
     );
 
     // then
     expect(
-      screen.getByRole("img", { name: /read as a share of the top figure/u }),
+      screen.getByRole("img", { name: /against the team's average rate over the same period/u }),
     ).toBeInTheDocument();
   });
 
@@ -777,6 +837,7 @@ describe("ContributorsTable productivity column", () => {
     // when
     await render(
       <ContributorsTable
+        window={WINDOW}
         contributors={contributors}
         totalCount={1}
         isLoading={false}
@@ -804,7 +865,7 @@ describe("ContributorsTable productivity column", () => {
 
     // when
     await render(
-      <ContributorsTable contributors={contributors} totalCount={1} isLoading={false} />,
+      <ContributorsTable window={WINDOW} contributors={contributors} totalCount={1} isLoading={false} />,
     );
 
     // then
@@ -826,12 +887,13 @@ describe("ContributorsTable productivity column", () => {
 
     // when
     const off = await render(
-      <ContributorsTable contributors={contributors} totalCount={1} isLoading={false} />,
+      <ContributorsTable window={WINDOW} contributors={contributors} totalCount={1} isLoading={false} />,
     );
     const withoutJira = scoreText();
     off.unmount();
     await render(
       <ContributorsTable
+        window={WINDOW}
         contributors={contributors}
         totalCount={1}
         isLoading={false}
@@ -841,9 +903,11 @@ describe("ContributorsTable productivity column", () => {
 
     // then
     // Half of what they resolved came back, which the score only knows about
-    // once somebody has told it Jira is switched on.
-    expect(withoutJira).toBe("98");
-    expect(scoreText()).toBe("96");
+    // once somebody has told it Jira is switched on — and which pulls the
+    // number down when it does. The absolute figure is lower than it used to
+    // be on both sides because the only row measured is the team average.
+    expect(withoutJira).toBe("57");
+    expect(Number(scoreText())).toBeLessThan(Number(withoutJira));
   });
 });
 
@@ -854,7 +918,7 @@ describe("ContributorsTable header tooltips", () => {
 
     // when
     await render(
-      <ContributorsTable contributors={contributors} totalCount={1} isLoading={false} />,
+      <ContributorsTable window={WINDOW} contributors={contributors} totalCount={1} isLoading={false} />,
     );
 
     // then
@@ -884,7 +948,7 @@ describe("ContributorsTable header tooltips", () => {
 
     // when
     await render(
-      <ContributorsTable contributors={contributors} totalCount={1} isLoading={false} />,
+      <ContributorsTable window={WINDOW} contributors={contributors} totalCount={1} isLoading={false} />,
     );
 
     // then

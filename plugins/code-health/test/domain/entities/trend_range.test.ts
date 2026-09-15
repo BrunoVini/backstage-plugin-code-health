@@ -1,5 +1,9 @@
+import type { TrendSelection } from "../../../src/domain/entities/trend_range";
 import {
   availableTrendMonths,
+  trendSelectionFromKey,
+  trendSelectionKey,
+  trendWindowOf,
   monthsBefore,
   trendWindow,
 } from "../../../src/domain/entities/trend_range";
@@ -94,5 +98,64 @@ describe("availableTrendMonths", () => {
 
     // then
     expect(offered).toEqual([1]);
+  });
+});
+
+describe("trendSelectionKey and trendSelectionFromKey", () => {
+  it("should round-trip a rolling count and a calendar month", () => {
+    // given
+    const rolling: TrendSelection = { kind: "months", months: 3 };
+    const month: TrendSelection = { kind: "month", month: { year: 2026, month: 9 } };
+
+    // when / then
+    expect(trendSelectionFromKey(trendSelectionKey(rolling))).toEqual(rolling);
+    expect(trendSelectionFromKey(trendSelectionKey(month))).toEqual(month);
+  });
+
+  it("should refuse a month ordinal outside the calendar", () => {
+    // given
+    // `Date` would roll `month:2026-99` into a year nobody asked for and a zero
+    // into the previous December.
+
+    // when / then
+    expect(trendSelectionFromKey("month:2026-99")).toBeNull();
+    expect(trendSelectionFromKey("month:2026-0")).toBeNull();
+  });
+
+  it("should refuse a count the detail pages do not offer", () => {
+    // given / when / then
+    expect(trendSelectionFromKey("months:99")).toBeNull();
+    expect(trendSelectionFromKey("")).toBeNull();
+    expect(trendSelectionFromKey("preset:day")).toBeNull();
+  });
+});
+
+describe("trendWindowOf", () => {
+  it("should read a rolling count back the number of calendar months", () => {
+    // given
+    const now = new Date("2026-09-15T12:00:00.000Z");
+
+    // when
+    const window = trendWindowOf({ kind: "months", months: 3 }, now);
+
+    // then
+    expect(new Date(window.from).getMonth()).toBe(new Date("2026-06-15").getMonth());
+    expect(window.to).toBe(now.toISOString());
+  });
+
+  it("should resolve a calendar month to that month, cut off at now while it runs", () => {
+    // given
+    // The tables' own resolver, so "September" is the same September on both
+    // screens rather than a window that ends in days nothing happened in yet.
+    const now = new Date(2026, 8, 15, 12);
+
+    // when
+    const finished = trendWindowOf({ kind: "month", month: { year: 2026, month: 8 } }, now);
+    const running = trendWindowOf({ kind: "month", month: { year: 2026, month: 9 } }, now);
+
+    // then
+    expect(new Date(finished.from).getMonth()).toBe(7);
+    expect(new Date(finished.to).getMonth()).toBe(8);
+    expect(running.to).toBe(now.toISOString());
   });
 });

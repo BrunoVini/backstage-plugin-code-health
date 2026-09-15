@@ -9,7 +9,7 @@ import {
   accumulateContributors,
   aggregateContributorSummaries,
 } from "../entities/contributor_aggregation";
-import { toDay } from "../entities/day";
+import { lastDayOf, toDay } from "../entities/day";
 import { loadPersonDirectory } from "../entities/person_directory";
 import type { RepositorySnapshot } from "../entities/repository_snapshot";
 import type { CodeHealthStore } from "../repositories/code_health_store";
@@ -50,7 +50,8 @@ export class ListContributorSummaries {
     to: Date;
     repositoryId?: string;
   }): Promise<ContributorSummary[]> {
-    const day = toDay(input.to);
+    // The day before `to` when the window ends at midnight — see `lastDayOf`.
+    const day = lastDayOf(input.to);
 
     const [events, wakaTimeRows, jiraRows, confluenceRows, snapshots, people] =
       await Promise.all([

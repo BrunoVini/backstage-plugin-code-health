@@ -25,6 +25,7 @@ export class RepositoryBuilder {
       id: `id-${counter}`,
       entityRef: `component:default/repo-${counter}`,
       ownerRef: null,
+      ownerProfile: null,
       platform: "github",
       name: `repo-${counter}`,
       fullName: `user/repo-${counter}`,
@@ -68,6 +69,16 @@ export class RepositoryBuilder {
 
   withId(id: string): this {
     this.props = { ...this.props, id };
+    return this;
+  }
+
+  /** A resolved owner: the reference plus the name and photograph the catalog holds. */
+  withOwnerProfile(ownerRef: string, displayName: string, picture: string | null = null): this {
+    this.props = {
+      ...this.props,
+      ownerRef,
+      ownerProfile: { entityRef: ownerRef, displayName, picture },
+    };
     return this;
   }
 

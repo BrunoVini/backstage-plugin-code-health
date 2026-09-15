@@ -122,6 +122,76 @@ describe("RepositoryTable", () => {
     );
   });
 
+  it("should show the owner's name and photograph rather than the slug", async () => {
+    // given
+    // A directory that names its users after their address turns this column
+    // into a page of `j.doe_example.com`, which leaves a reader
+    // translating every row back into a person by hand.
+    const repos = [
+      RepositoryBuilder.create()
+        .withName("gateway")
+        .withOwnerProfile(
+          "user:default/e.silva_example.com",
+          "Jane Doe",
+          "https://example.com/jane.png",
+        )
+        .build(),
+    ];
+
+    // when
+    await render(<RepositoryTable repositories={repos} totalCount={1} isLoading={false} />);
+
+    // then
+    expect(screen.getByText("Jane Doe").closest("a")).toHaveAttribute(
+      "href",
+      "/catalog/default/user/e.silva_example.com",
+    );
+    const ownerCell = screen.getAllByRole("row")[2].querySelectorAll("td")[1];
+    expect(ownerCell?.querySelector("img")).toHaveAttribute(
+      "src",
+      "https://example.com/jane.png",
+    );
+  });
+
+  it("should fall back to the slug for an owner the catalog no longer holds", async () => {
+    // given
+    // A person who has left is a row with no photograph, not a broken one: the
+    // reference still says who the YAML names.
+    const repos = [
+      RepositoryBuilder.create().withName("legacy").withOwner("group:default/platform").build(),
+    ];
+
+    // when
+    await render(<RepositoryTable repositories={repos} totalCount={1} isLoading={false} />);
+
+    // then
+    expect(screen.getByText("platform")).toBeInTheDocument();
+  });
+
+  it("should filter and sort on the name a reader can actually see", async () => {
+    // given
+    // A column that filters on a hidden slug is a column whose results nobody
+    // can predict.
+    const repos = [
+      RepositoryBuilder.create()
+        .withName("one")
+        .withOwnerProfile("group:default/plat-1", "Platform")
+        .build(),
+      RepositoryBuilder.create()
+        .withName("two")
+        .withOwnerProfile("group:default/pay-2", "Payments")
+        .build(),
+    ];
+    await render(<RepositoryTable repositories={repos} totalCount={2} isLoading={false} />);
+
+    // when
+    fireEvent.change(screen.getByLabelText("Filter owner"), { target: { value: "Platf" } });
+
+    // then
+    expect(screen.getByText("Platform")).toBeInTheDocument();
+    expect(screen.queryByText("Payments")).not.toBeInTheDocument();
+  });
+
   it("should leave the owner empty when the entity declares none", async () => {
     // given
     // An unowned repository is a real finding; a fabricated owner would hide it.

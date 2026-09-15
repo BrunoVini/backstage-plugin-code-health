@@ -1,4 +1,5 @@
 import { confluenceContributions } from "./confluence_metrics";
+import { describeRatePair } from "./contributor_rates";
 import type { ContributorSummary } from "./contributor_summary";
 import type { IntegrationCapabilities, IntegrationId } from "./integrations";
 import { NO_INTEGRATIONS } from "./integrations";
@@ -20,13 +21,36 @@ import { formatDuration } from "./wakatime_metrics";
  * These figures are read as a measure of people, so what goes into the number
  * matters more than the number. Four rules decide it:
  *
- * - **Output is measured against the fleet, not against a constant.** Commits,
+ * - **Output is a rate, measured against the fleet's average rate.** Commits,
  *   merged pull requests, churn and reviews — and, wherever the integration is
  *   configured, coding time, resolved tickets and documentation written — are
- *   each read as a share of the top figure anybody recorded in the same window.
- *   A quiet month for the whole team is then a quiet month, not everybody's
- *   failure, and there is no invented "forty commits is a good month" to argue
- *   with.
+ *   divided by the days the window spans and read against the *mean* rate
+ *   across the people measured in it, with twice that mean scoring full marks.
+ *   A quiet month for the whole team is then a quiet month rather than
+ *   everybody's failure, and there is no invented "forty commits is a good
+ *   month" to argue with.
+ *
+ *   The mean, not the maximum. Against the top figure, one person having an
+ *   extraordinary month pushed everybody else's score down for reasons that
+ *   had nothing to do with them, and a single automation nobody had excluded
+ *   yet could flatten a whole team at once. Against the mean, keeping pace
+ *   with the team scores half, doubling it scores full, and one outlier moves
+ *   the reference by a fraction of its own size instead of setting it outright.
+ *
+ *   A rate, not a total, so that every figure means the same thing whatever
+ *   range was picked: "0.8 commits a day" is comparable with last quarter's
+ *   reading, where "12 commits" is only comparable against another twelve
+ *   weeks. The division cancels out of the comparison itself, so the score is
+ *   the same number either way — what it buys is the wording and the Averages
+ *   card, not a different result.
+ *
+ *   It does **not** correct for tenure or absence, and must not be described as
+ *   though it did. Everybody is divided by the same window, so somebody who
+ *   joined halfway through it carries half the total and half the rate, and
+ *   scores half of a colleague who worked at the same pace throughout. Only a
+ *   per-person denominator — the days that person was actually active — would
+ *   remove that, and it brings its own distortion: one day worked and two
+ *   commits made would read as twice as productive as a steady month.
  * - **Reliability and quality are absolute.** A pipeline success rate, a
  *   quality gate, and the share of somebody's resolved tickets that stayed
  *   resolved mean the same thing whoever else is on the team.
@@ -50,18 +74,28 @@ import { formatDuration } from "./wakatime_metrics";
 export type ProductivityScore = Score;
 
 /**
- * The top figure anybody in the window recorded, per relative component.
+ * The fleet's **mean daily rate** for each relative component, and the window
+ * those rates were taken over.
+ *
+ * A mean rather than a maximum, and per day rather than per window — see the
+ * reasoning on {@link ProductivityScore}. `days` travels with the figures
+ * because every sentence the score produces is phrased as a rate, and a rate
+ * separated from the period it was taken over is a number nobody can check.
  *
  * Churn is kept per unit because the two providers do not report the same
  * thing: GitHub reports lines, Azure DevOps reports files, and a person on one
  * platform is only ever compared with people measured in their own unit.
  *
- * The three integration figures skip a row whose metrics are null rather than
- * reading it as a zero. An account nobody has linked has not recorded no coding
- * time — nothing was ever asked on its behalf — and letting silence take part
- * in a maximum is only ever a way of getting the maximum wrong.
+ * Each mean is taken over the rows the component could be *measured* on, not
+ * over everybody. A row whose metrics are null has not recorded a zero —
+ * nothing was ever asked on its behalf — and averaging silence in as zero drags
+ * the reference down towards nothing, which would flatter every row that does
+ * carry a figure. It is the same rule the maximum followed, and it matters more
+ * here: a maximum ignores a wrong zero, a mean is moved by every one of them.
  */
 export interface FleetReference {
+  /** Days the window spans, which every figure below is a per-day rate over. */
+  readonly days: number;
   readonly commits: number;
   readonly pullRequestsMerged: number;
   readonly reviewsGiven: number;
@@ -73,6 +107,7 @@ export interface FleetReference {
 }
 
 export const EMPTY_FLEET_REFERENCE: FleetReference = {
+  days: 1,
   commits: 0,
   pullRequestsMerged: 0,
   reviewsGiven: 0,
@@ -83,42 +118,61 @@ export const EMPTY_FLEET_REFERENCE: FleetReference = {
   documentationContributions: 0,
 };
 
+/**
+ * The mean of whatever each row could be measured for, as a daily rate.
+ *
+ * Rows the figure is absent from are skipped entirely rather than counted as
+ * zeros, so the divisor is "the people this could be measured for" rather than
+ * "everybody who turned up". With nobody qualifying the mean is zero, which
+ * every reading treats as unmeasurable rather than as a bar of nothing.
+ */
+const meanRate = (
+  contributors: readonly ContributorSummary[],
+  days: number,
+  pick: (contributor: ContributorSummary) => number | null,
+): number => {
+  const measured = contributors.flatMap((contributor) => {
+    const value = pick(contributor);
+    return value === null ? [] : [value];
+  });
+  if (measured.length === 0) return 0;
+  return measured.reduce((total, value) => total + value, 0) / measured.length / days;
+};
+
 export const fleetReferenceOf = (
   contributors: readonly ContributorSummary[],
-): FleetReference =>
-  contributors.reduce<FleetReference>(
-    (reference, contributor) => ({
-      commits: Math.max(reference.commits, contributor.commits),
-      pullRequestsMerged: Math.max(
-        reference.pullRequestsMerged,
-        contributor.pullRequestsMerged,
-      ),
-      reviewsGiven: Math.max(reference.reviewsGiven, contributor.reviewsGiven),
-      linesOfCode:
-        contributor.churnUnit === "lines"
-          ? Math.max(reference.linesOfCode, contributor.linesOfCode)
-          : reference.linesOfCode,
-      changedFiles:
-        contributor.churnUnit === "files"
-          ? Math.max(reference.changedFiles, contributor.changedFiles)
-          : reference.changedFiles,
-      codingSeconds: Math.max(
-        reference.codingSeconds,
-        contributor.wakaTimeMetrics?.totalSeconds ?? 0,
-      ),
-      issuesResolved: Math.max(
-        reference.issuesResolved,
-        contributor.jiraMetrics?.issuesResolved ?? 0,
-      ),
-      documentationContributions: Math.max(
-        reference.documentationContributions,
-        contributor.confluenceMetrics === null
-          ? 0
-          : confluenceContributions(contributor.confluenceMetrics),
-      ),
-    }),
-    EMPTY_FLEET_REFERENCE,
-  );
+  windowDays: number,
+): FleetReference => {
+  const days = Math.max(windowDays, 1 / 24);
+
+  return {
+    days,
+    commits: meanRate(contributors, days, (row) => row.commits),
+    pullRequestsMerged: meanRate(contributors, days, (row) => row.pullRequestsMerged),
+    reviewsGiven: meanRate(contributors, days, (row) => row.reviewsGiven),
+    linesOfCode: meanRate(contributors, days, (row) =>
+      row.churnUnit === "lines" ? row.linesOfCode : null,
+    ),
+    changedFiles: meanRate(contributors, days, (row) =>
+      row.churnUnit === "files" ? row.changedFiles : null,
+    ),
+    codingSeconds: meanRate(
+      contributors,
+      days,
+      (row) => row.wakaTimeMetrics?.totalSeconds ?? null,
+    ),
+    issuesResolved: meanRate(
+      contributors,
+      days,
+      (row) => row.jiraMetrics?.issuesResolved ?? null,
+    ),
+    documentationContributions: meanRate(contributors, days, (row) =>
+      row.confluenceMetrics === null
+        ? null
+        : confluenceContributions(row.confluenceMetrics),
+    ),
+  };
+};
 
 /**
  * Every component, with the weight it carries before renormalisation.
@@ -180,25 +234,49 @@ const plural = (count: number, noun: string): string =>
   `${count.toLocaleString()} ${noun}${count === 1 ? "" : "s"}`;
 
 /**
- * A figure read against the fleet's top figure in the same window.
+ * How much of the fleet's mean rate scores full marks.
  *
- * With nobody recording any, the component is unmeasurable rather than zero:
- * a week in which no pull request merged anywhere says nothing about anyone.
+ * Twice it, so keeping pace with the team scores half and doubling it scores
+ * everything. A multiplier of one would make the mean itself full marks and
+ * hand the same score to somebody matching the team and somebody tripling it;
+ * anything higher makes the average look like a failure. Two is the setting
+ * that leaves "average" reading as average.
+ */
+export const FLEET_RATE_CEILING = 2;
+
+/**
+ * A rate read against twice the fleet's mean rate in the same window.
+ *
+ * With nobody recording any, the component is unmeasurable rather than zero: a
+ * week in which no pull request merged anywhere says nothing about anyone.
+ *
+ * `value` stays the raw total, because that is the figure the table prints and
+ * a component whose value disagreed with its own column would be unreadable.
+ * Only `normalized` and the sentence are in rates.
  */
 const relative = (
   definition: ScoreComponentDefinition,
   value: number,
-  top: number,
+  fleetRate: number,
+  days: number,
   noun: string,
-): ScoreComponent =>
-  top <= 0
-    ? unmeasuredComponent(definition, `nobody recorded any ${noun}s in this window`)
-    : measuredComponent(
-        definition,
-        value,
-        shareOf(value, top),
-        `${plural(value, noun)} against the window's top figure of ${top.toLocaleString()}`,
-      );
+): ScoreComponent => {
+  if (fleetRate <= 0) {
+    return unmeasuredComponent(definition, `nobody recorded any ${noun}s in this window`);
+  }
+
+  // Both halves in one period, chosen once. Said independently they land in
+  // different units whenever they straddle one a day, and the sentence then
+  // contradicts the share it is explaining.
+  const said = describeRatePair(value / days, fleetRate, noun);
+
+  return measuredComponent(
+    definition,
+    value,
+    shareOf(value / days, fleetRate * FLEET_RATE_CEILING),
+    `${said.value} against the team's average of ${said.reference}`,
+  );
+};
 
 const churnOf = (
   definition: ScoreComponentDefinition,
@@ -206,10 +284,22 @@ const churnOf = (
   reference: FleetReference,
 ): ScoreComponent => {
   if (summary.churnUnit === "lines") {
-    return relative(definition, summary.linesOfCode, reference.linesOfCode, "net line");
+    return relative(
+      definition,
+      summary.linesOfCode,
+      reference.linesOfCode,
+      reference.days,
+      "net line",
+    );
   }
   if (summary.churnUnit === "files") {
-    return relative(definition, summary.changedFiles, reference.changedFiles, "changed file");
+    return relative(
+      definition,
+      summary.changedFiles,
+      reference.changedFiles,
+      reference.days,
+      "changed file",
+    );
   }
   return unmeasuredComponent(definition, "the provider reported no churn figure");
 };
@@ -266,7 +356,7 @@ const coverageOf = (
 };
 
 /**
- * Coding time, against whoever logged the most of it in the window.
+ * Coding time, against the team's average over the same window.
  *
  * Phrased in hours and minutes rather than in seconds because the sentence is
  * only ever read by a person, and thirty thousand of anything is not a duration
@@ -288,13 +378,19 @@ const codingTimeOf = (
   if (reference.codingSeconds <= 0) {
     return unmeasuredComponent(definition, "nobody recorded any coding time in this window");
   }
+  // Said as a duration a day rather than through `describeRatePair`, because
+  // "1.23 seconds a day" is a sentence nobody can read and hours are what
+  // coding time is thought in everywhere else on the page.
   return measuredComponent(
     definition,
     wakaTime.totalSeconds,
-    shareOf(wakaTime.totalSeconds, reference.codingSeconds),
-    `${formatDuration(wakaTime.totalSeconds)} against the window's top figure of ${formatDuration(
-      reference.codingSeconds,
-    )}`,
+    shareOf(
+      wakaTime.totalSeconds / reference.days,
+      reference.codingSeconds * FLEET_RATE_CEILING,
+    ),
+    `${formatDuration(
+      wakaTime.totalSeconds / reference.days,
+    )} a day against the team's average of ${formatDuration(reference.codingSeconds)} a day`,
   );
 };
 
@@ -307,7 +403,13 @@ const ticketsResolvedOf = (
   if (jira === null) {
     return unmeasuredComponent(definition, "no Jira account is linked to this person");
   }
-  return relative(definition, jira.issuesResolved, reference.issuesResolved, "resolved ticket");
+  return relative(
+    definition,
+    jira.issuesResolved,
+    reference.issuesResolved,
+    reference.days,
+    "resolved ticket",
+  );
 };
 
 /**
@@ -341,7 +443,7 @@ const reopenedOf = (
 };
 
 /**
- * Documentation written, read against the fleet's top figure — but over
+ * Documentation written, read against the team's average — but over
  * Confluence's own trailing window, not the one the reader picked.
  *
  * Confluence is the one integration stored per window rather than per day: its
@@ -368,12 +470,18 @@ const documentationOf = (
       "nobody recorded any Confluence contributions over Confluence's trailing window",
     );
   }
+  // Compared as totals rather than as rates: both sides describe Confluence's
+  // own trailing window, so dividing by the *picked* range's days would label
+  // a ninety-day figure as a daily one. The ratio is the same either way.
   const value = confluenceContributions(confluence);
+  const average = top * reference.days;
   return measuredComponent(
     definition,
     value,
-    shareOf(value, top),
-    `${plural(value, "Confluence contribution")} against the top figure of ${top.toLocaleString()} over Confluence's trailing window, not the range picked`,
+    shareOf(value, average * FLEET_RATE_CEILING),
+    `${plural(value, "Confluence contribution")} against the team's average of ${
+      Math.round(average * 10) / 10
+    } over Confluence's trailing window, not the range picked`,
   );
 };
 
@@ -402,7 +510,7 @@ const READINGS: Readonly<Record<ProductivityComponentId, ComponentReading>> = {
   commits: {
     integration: null,
     read: (definition, summary, reference) =>
-      relative(definition, summary.commits, reference.commits, "commit"),
+      relative(definition, summary.commits, reference.commits, reference.days, "commit"),
   },
   pullRequestsMerged: {
     integration: null,
@@ -411,6 +519,7 @@ const READINGS: Readonly<Record<ProductivityComponentId, ComponentReading>> = {
         definition,
         summary.pullRequestsMerged,
         reference.pullRequestsMerged,
+        reference.days,
         "merged pull request",
       ),
   },
@@ -418,7 +527,13 @@ const READINGS: Readonly<Record<ProductivityComponentId, ComponentReading>> = {
   reviewsGiven: {
     integration: null,
     read: (definition, summary, reference) =>
-      relative(definition, summary.reviewsGiven, reference.reviewsGiven, "review"),
+      relative(
+        definition,
+        summary.reviewsGiven,
+        reference.reviewsGiven,
+        reference.days,
+        "review",
+      ),
   },
   pipelineSuccessRate: { integration: null, read: pipelineOf },
   qualityGate: { integration: null, read: qualityGateOf },

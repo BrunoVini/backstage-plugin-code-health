@@ -4,6 +4,7 @@ import type { ComplianceStatus } from "./compliance_status";
 import type { ConfluenceSpaceMetrics } from "./confluence_metrics";
 import type { JiraRepositoryMetrics } from "./jira_metrics";
 import type { DocumentationStatus } from "./documentation_status";
+import type { EntityProfile } from "./ownership";
 import type { Platform } from "./platform";
 import type { Release } from "./release";
 import type { SonarMetrics } from "./sonar_metrics";
@@ -86,6 +87,17 @@ export interface RepositorySummary {
    * which is a different question from who committed to it.
    */
   readonly ownerRef: string | null;
+  /**
+   * The owning entity's name and photograph, resolved from the catalog when the
+   * row is built.
+   *
+   * Resolved on read rather than stored beside `owner_ref` by discovery,
+   * because a person's name and photograph change in the directory without
+   * anything in the repository's YAML moving — a row carrying a copy from
+   * whenever discovery last ran would show last year's surname. Null when the
+   * entity has no owner, or when the catalog no longer holds the one it names.
+   */
+  readonly ownerProfile: EntityProfile | null;
   readonly platform: Platform;
   readonly name: string;
   /** `owner/repo` on GitHub, `organization/project/repo` on Azure DevOps. */

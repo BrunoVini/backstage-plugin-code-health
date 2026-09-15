@@ -7,6 +7,7 @@ import {
 import { useRouteRef } from "@backstage/core-plugin-api";
 import type {
   ConfluenceSpaceMetrics,
+  EntityProfile,
   IntegrationCapabilities,
   JiraRepositoryMetrics,
   Platform,
@@ -101,7 +102,13 @@ const bucketCaption = (bucket: TimeSeriesBucket): string =>
  * A reference the catalog cannot address degrades to an em dash rather than to
  * a link that would 404 — the same rule the table's owner column follows.
  */
-const OwnerLink = ({ ownerRef }: { ownerRef: string | null }) => {
+const OwnerLink = ({
+  ownerRef,
+  profile,
+}: {
+  ownerRef: string | null;
+  profile: EntityProfile | null;
+}) => {
   const parsed = ownerRef === null ? null : parseEntityRef(ownerRef);
   const path = ownerRef === null ? null : catalogEntityPath(ownerRef);
 
@@ -115,7 +122,9 @@ const OwnerLink = ({ ownerRef }: { ownerRef: string | null }) => {
 
   return (
     <Link component={RouterLink} to={path}>
-      {parsed.name}
+      {/* The resolved name, so the header reads the same as the table row this
+          page was opened from; the slug is the fallback rather than an error. */}
+      {profile?.displayName ?? parsed.name}
     </Link>
   );
 };
@@ -153,7 +162,8 @@ const RepositoryIdentity = ({ summary }: { summary: RepositorySummary }) => {
 
       <Box mt={1} display="flex" alignItems="center" flexWrap="wrap" gridGap={16}>
         <Typography variant="body2" component="span">
-          Owner: <OwnerLink ownerRef={summary.ownerRef} />
+          Owner:{" "}
+          <OwnerLink ownerRef={summary.ownerRef} profile={summary.ownerProfile} />
         </Typography>
         {entityPath === null ? null : (
           <Link component={RouterLink} to={entityPath}>
@@ -351,8 +361,9 @@ export const RepositoryDetailPage = ({
 
       <ContentHeader title={trend?.summary.name ?? "Repository"}>
         <TrendRangePicker
-          months={range.months}
+          selection={range.selection}
           offered={range.offered}
+          months={range.months}
           onChange={range.select}
         />
       </ContentHeader>

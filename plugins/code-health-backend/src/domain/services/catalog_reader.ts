@@ -1,4 +1,5 @@
 import type { Entity } from "@backstage/catalog-model";
+import type { EntityProfile } from "@rios0rios0/backstage-plugin-code-health-common";
 import type { EntityFilter } from "../entities/ingestion_settings";
 
 /**
@@ -44,4 +45,21 @@ export interface CatalogReader {
    * owns nothing, not a broken request.
    */
   listOwnershipRefs(userEntityRef: string): Promise<string[]>;
+
+  /**
+   * The name and photograph of each entity reference, keyed by the reference.
+   *
+   * Any kind, not only `User`: a repository's `spec.owner` is usually a
+   * `Group`, and a lookup that quietly returned nothing for those would leave
+   * most of a fleet's rows printing slugs.
+   *
+   * Bounded by the *distinct* owners of the tracked repositories, which is a
+   * team list rather than a directory — two hundred repositories in an
+   * organisation share a handful of owners, so this is one small query per
+   * dashboard load rather than one per row.
+   *
+   * A reference the catalog does not hold is simply absent from the result: an
+   * owner who has left is a row with no photograph, not a broken request.
+   */
+  getEntityProfiles(entityRefs: readonly string[]): Promise<Map<string, EntityProfile>>;
 }
