@@ -52,6 +52,7 @@ import type {
 import { contributorDetailRouteRef, repositoriesRouteRef } from "../../routes";
 import { RankingChart } from "../components/charts/ranking_chart";
 import { TrendChart } from "../components/charts/trend_chart";
+import { RepositoryRatesCard } from "../components/repository_rates_card";
 import { ScoreCard } from "../components/score_card";
 import { StateChip } from "../components/state_chip";
 import { TrendRangePicker } from "../components/trend_range_picker";
@@ -435,6 +436,19 @@ export const RepositoryDetailPage = ({
                 </Typography>
               )}
             </InfoCard>
+          </Grid>
+
+          {/* Directly under the score and the people, because it is the
+              window's activity written out as rates: what a reader asking "is
+              this repository busy" wants before any chart, beside the fleet's
+              average so the answer is a comparison rather than a number. */}
+          <Grid item xs={12}>
+            <RepositoryRatesCard
+              summary={trend.summary}
+              window={range.window}
+              capabilities={capabilities}
+              fleet={trend.fleet}
+            />
           </Grid>
 
           <Grid item xs={12}>

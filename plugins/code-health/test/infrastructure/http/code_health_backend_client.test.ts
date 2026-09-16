@@ -121,7 +121,7 @@ describe("CodeHealthBackendClient", () => {
     const trend = await client.getContributorTrend("user:default/jane", WINDOW, "week");
 
     // then
-    expect(trend).toEqual({ points: [] });
+    expect(trend).toEqual({ points: [], fleet: null });
     expect(fetchApi.calls[0].url).toContain("/v1/contributors/user%3Adefault%2Fjane/trend?");
     expect(fetchApi.queryOf(0).get("bucket")).toBe("week");
     expect(fetchApi.queryOf(0).get("from")).toBe(WINDOW.from);
@@ -136,7 +136,7 @@ describe("CodeHealthBackendClient", () => {
     const trend = await client.getRepositoryTrend("repo-1", WINDOW, "day");
 
     // then
-    expect(trend).toEqual({ id: "repo-1", points: [] });
+    expect(trend).toEqual({ id: "repo-1", points: [], fleet: null });
     expect(fetchApi.calls[0].url).toContain("/v1/repositories/repo-1/trend?");
     expect(fetchApi.queryOf(0).get("bucket")).toBe("day");
   });
@@ -252,6 +252,58 @@ describe("CodeHealthBackendClient", () => {
 
     // when / then
     await expect(client.getCoverage()).rejects.toThrow("Failed to fetch");
+  });
+
+  describe("directory search and fleet rates", () => {
+    it("should ask the backend for the users matching what was typed", async () => {
+      // given
+      const fetchApi = new StubFetchApi().withResponses({
+        body: { items: [{ entityRef: "user:default/felipe" }] },
+      });
+      const { client } = createClient(fetchApi);
+
+      // when
+      const users = await client.listDirectoryUsers("fel ipe");
+
+      // then
+      expect(users).toEqual([{ entityRef: "user:default/felipe" }]);
+      expect(fetchApi.calls[0]?.url).toContain("/v1/identities/users?");
+      expect(fetchApi.queryOf(0).get("q")).toBe("fel ipe");
+    });
+
+    it("should read an absent fleet as nothing to compare against", async () => {
+      // given
+      // A backend from before the fleet rates sends nothing under the key, and
+      // the cards read that as "no average was sent" rather than failing.
+      const fetchApi = new StubFetchApi().withResponses(
+        { body: { key: "vcs:jane", summary: null, score: null, points: [] } },
+        { body: { id: "repo", summary: { id: "repo" }, score: { value: null }, points: [] } },
+      );
+      const { client } = createClient(fetchApi);
+
+      // when
+      const contributor = await client.getContributorTrend("vcs:jane", WINDOW, "week");
+      const repository = await client.getRepositoryTrend("repo", WINDOW, "week");
+
+      // then
+      expect(contributor.fleet).toBeNull();
+      expect(repository.fleet).toBeNull();
+    });
+
+    it("should pass a fleet through untouched when the backend sends one", async () => {
+      // given
+      const fleet = { days: 7, people: 2, commits: 1 };
+      const fetchApi = new StubFetchApi().withResponses({
+        body: { key: "vcs:jane", summary: null, score: null, fleet, points: [] },
+      });
+      const { client } = createClient(fetchApi);
+
+      // when
+      const contributor = await client.getContributorTrend("vcs:jane", WINDOW, "week");
+
+      // then
+      expect(contributor.fleet).toEqual(fleet);
+    });
   });
 
   describe("integrations and identities", () => {

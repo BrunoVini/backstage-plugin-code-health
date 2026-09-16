@@ -125,8 +125,12 @@ export const EMPTY_FLEET_REFERENCE: FleetReference = {
  * zeros, so the divisor is "the people this could be measured for" rather than
  * "everybody who turned up". With nobody qualifying the mean is zero, which
  * every reading treats as unmeasurable rather than as a bar of nothing.
+ *
+ * Exported for the fleet rates the Averages card compares against, which are
+ * taken by this exact arithmetic so the card and the score cannot disagree
+ * about what the team's average is.
  */
-const meanRate = (
+export const meanRate = (
   contributors: readonly ContributorSummary[],
   days: number,
   pick: (contributor: ContributorSummary) => number | null,

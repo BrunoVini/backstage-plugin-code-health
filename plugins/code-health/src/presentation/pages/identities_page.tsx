@@ -3,28 +3,33 @@ import Avatar from "@material-ui/core/Avatar";
 import Box from "@material-ui/core/Box";
 import Chip from "@material-ui/core/Chip";
 import FormControlLabel from "@material-ui/core/FormControlLabel";
-import Paper from "@material-ui/core/Paper";
 import Switch from "@material-ui/core/Switch";
-import Table from "@material-ui/core/Table";
-import TableBody from "@material-ui/core/TableBody";
-import TableCell from "@material-ui/core/TableCell";
-import TableContainer from "@material-ui/core/TableContainer";
-import TableHead from "@material-ui/core/TableHead";
-import TableRow from "@material-ui/core/TableRow";
 import TextField from "@material-ui/core/TextField";
 import Typography from "@material-ui/core/Typography";
 import { makeStyles } from "@material-ui/core/styles";
+import type { ColumnDef, ColumnFiltersState, SortingState } from "@tanstack/react-table";
+import {
+  getCoreRowModel,
+  getFilteredRowModel,
+  getPaginationRowModel,
+  getSortedRowModel,
+  useReactTable,
+} from "@tanstack/react-table";
 import type {
+  DirectoryUser,
+  ExclusionReason,
   IdentityRow,
   IdentitySource,
   IntegrationCapabilities,
 } from "@rios0rios0/backstage-plugin-code-health-common";
 import {
+  EXCLUSION_REASON_LABELS,
   IDENTITY_SOURCE_LABELS,
   isIdentitySource,
 } from "@rios0rios0/backstage-plugin-code-health-common";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { IdentityService } from "../../domain/services/dashboard_service";
+import { DataTable, DEFAULT_PAGE_SIZE, PaginationControls } from "../components/data_table";
 import { IdentityExclusionCell } from "../components/identity_exclusion_cell";
 import { IdentityLinkCell } from "../components/identity_link_cell";
 import { useIdentities } from "../hooks/use_identities";
@@ -32,12 +37,6 @@ import { useIdentities } from "../hooks/use_identities";
 const useStyles = makeStyles((theme) => ({
   avatar: { width: 24, height: 24, fontSize: "0.7rem" },
   account: { display: "flex", alignItems: "center", gap: theme.spacing(1) },
-  headerCell: {
-    whiteSpace: "nowrap",
-    textTransform: "uppercase",
-    fontSize: theme.typography.pxToRem(11),
-    letterSpacing: "0.05em",
-  },
   toolbar: {
     display: "flex",
     alignItems: "center",
@@ -119,6 +118,84 @@ const AccountCell = ({ row }: { row: IdentityRow }) => {
   );
 };
 
+/** The account as it is read, so the name filter matches what is on screen. */
+const accountTextOf = (row: IdentityRow): string =>
+  [row.identity.displayName, row.identity.sourceKey, row.identity.email]
+    .filter((part): part is string => part !== null)
+    .join(" ");
+
+/** What the Measurement column says, which is also what it sorts on. */
+const measurementOf = (row: IdentityRow): string =>
+  row.exclusion === null ? "Measured" : EXCLUSION_REASON_LABELS[row.exclusion.reason];
+
+/** The row's own identity, stable across reloads so its controls keep their state. */
+const rowIdOf = (row: IdentityRow): string => `${row.identity.source}:${row.identity.sourceKey}`;
+
+interface RowActions {
+  readonly isBusy: boolean;
+  readonly searchUsers: (query: string) => Promise<readonly DirectoryUser[]>;
+  readonly link: (row: IdentityRow, entityRef: string) => void;
+  readonly unlink: (row: IdentityRow) => void;
+  readonly exclude: (row: IdentityRow, reason: ExclusionReason) => void;
+  readonly include: (row: IdentityRow) => void;
+}
+
+/**
+ * The four columns, with the two that write bound to the page's actions.
+ *
+ * Built per set of actions rather than once at module level, because the two
+ * interactive cells need the page's own callbacks and its loading state — and
+ * a column that reached for those through a context would hide the dependency
+ * the table actually has.
+ */
+const columnsFor = (actions: RowActions): ColumnDef<IdentityRow>[] => [
+  {
+    id: "account",
+    accessorFn: accountTextOf,
+    header: "Account",
+    cell: ({ row }) => <AccountCell row={row.original} />,
+    filterFn: "includesString",
+  },
+  {
+    id: "source",
+    accessorFn: (row) => IDENTITY_SOURCE_LABELS[row.identity.source],
+    header: "Source",
+    cell: ({ getValue }) => <Chip size="small" variant="outlined" label={getValue<string>()} />,
+    // The toolbar already narrows by source, and asks the backend rather than
+    // hiding rows it has already been sent.
+    enableColumnFilter: false,
+  },
+  {
+    id: "person",
+    accessorFn: (row) => row.link?.entityRef ?? "",
+    header: "Person",
+    cell: ({ row }) => (
+      <IdentityLinkCell
+        row={row.original}
+        isBusy={actions.isBusy}
+        searchUsers={actions.searchUsers}
+        onLink={(entityRef) => actions.link(row.original, entityRef)}
+        onUnlink={() => actions.unlink(row.original)}
+      />
+    ),
+    filterFn: "includesString",
+  },
+  {
+    id: "measurement",
+    accessorFn: measurementOf,
+    header: "Measurement",
+    cell: ({ row }) => (
+      <IdentityExclusionCell
+        row={row.original}
+        isBusy={actions.isBusy}
+        onExclude={(reason) => actions.exclude(row.original, reason)}
+        onInclude={() => actions.include(row.original)}
+      />
+    ),
+    enableColumnFilter: false,
+  },
+];
+
 /**
  * One person, one row — the screen that makes that true, and the screen that
  * decides which rows are people at all.
@@ -143,6 +220,11 @@ const AccountCell = ({ row }: { row: IdentityRow }) => {
  * re-read through them: correcting a link or including an account again today
  * fixes last March's numbers too, because both are applied when the row is
  * built rather than when the measurement was taken.
+ *
+ * The listing is the same table the other tabs use, so it sorts on every
+ * column, filters by name and pages like them. A fleet's accounts run to
+ * hundreds, and a screen that drew them all at once was one long scroll with
+ * no way to find the one that mattered.
  */
 /**
  * Deliberately without the `enabled` gate the other tabs carry. Theirs exists
@@ -162,6 +244,8 @@ export const IdentitiesPage = ({
   // reach the nine that do.
   const [unlinkedOnly, setUnlinkedOnly] = useState(true);
   const [measurement, setMeasurement] = useState<MeasurementFilter>("");
+  const [sorting, setSorting] = useState<SortingState>([{ id: "account", desc: false }]);
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
 
   const excluded = excludedFlagOf(measurement);
 
@@ -176,6 +260,50 @@ export const IdentitiesPage = ({
 
   const { identities, isLoading, error, writeError, link, unlink, exclude, include } =
     useIdentities(identityService, filter);
+
+  const searchUsers = useCallback(
+    (query: string) => identityService.listDirectoryUsers(query),
+    [identityService],
+  );
+
+  const columns = useMemo(
+    () =>
+      columnsFor({
+        isBusy: isLoading,
+        searchUsers,
+        link: (row, entityRef) =>
+          void link({
+            source: row.identity.source,
+            sourceKey: row.identity.sourceKey,
+            entityRef,
+          }),
+        unlink: (row) =>
+          void unlink({ source: row.identity.source, sourceKey: row.identity.sourceKey }),
+        exclude: (row, reason) =>
+          void exclude({
+            source: row.identity.source,
+            sourceKey: row.identity.sourceKey,
+            reason,
+          }),
+        include: (row) =>
+          void include({ source: row.identity.source, sourceKey: row.identity.sourceKey }),
+      }),
+    [isLoading, searchUsers, link, unlink, exclude, include],
+  );
+
+  const table = useReactTable({
+    data: identities,
+    columns,
+    state: { sorting, columnFilters },
+    onSortingChange: setSorting,
+    onColumnFiltersChange: setColumnFilters,
+    getRowId: rowIdOf,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    initialState: { pagination: { pageSize: DEFAULT_PAGE_SIZE } },
+  });
 
   const sources = filterableSources(capabilities);
   const unlinkedCount = identities.filter((row) => row.link === null).length;
@@ -270,10 +398,6 @@ export const IdentitiesPage = ({
           }
           label="Only accounts nobody has linked"
         />
-
-        <Typography variant="body2" color="textSecondary">
-          {identities.length} listed · {unlinkedCount} unlinked · {excludedCount} excluded
-        </Typography>
       </Box>
 
       {error === null ? null : (
@@ -299,79 +423,31 @@ export const IdentitiesPage = ({
       ) : null}
 
       {identities.length === 0 ? null : (
-        <TableContainer component={Paper} variant="outlined">
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell className={classes.headerCell}>Account</TableCell>
-                <TableCell className={classes.headerCell}>Source</TableCell>
-                <TableCell className={classes.headerCell}>Person</TableCell>
-                <TableCell className={classes.headerCell}>Measurement</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {identities.map((row) => (
-                <TableRow
-                  key={`${row.identity.source}:${row.identity.sourceKey}`}
-                  hover
-                  // Dimmed rather than hidden: the row is what somebody reads to
-                  // find out an account was excluded on purpose, and it is the
-                  // only place the decision can be undone.
-                  className={row.exclusion === null ? undefined : classes.excludedRow}
-                >
-                  <TableCell>
-                    <AccountCell row={row} />
-                  </TableCell>
-                  <TableCell>
-                    <Chip
-                      size="small"
-                      variant="outlined"
-                      label={IDENTITY_SOURCE_LABELS[row.identity.source]}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <IdentityLinkCell
-                      row={row}
-                      isBusy={isLoading}
-                      onLink={(entityRef) =>
-                        void link({
-                          source: row.identity.source,
-                          sourceKey: row.identity.sourceKey,
-                          entityRef,
-                        })
-                      }
-                      onUnlink={() =>
-                        void unlink({
-                          source: row.identity.source,
-                          sourceKey: row.identity.sourceKey,
-                        })
-                      }
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <IdentityExclusionCell
-                      row={row}
-                      isBusy={isLoading}
-                      onExclude={(reason) =>
-                        void exclude({
-                          source: row.identity.source,
-                          sourceKey: row.identity.sourceKey,
-                          reason,
-                        })
-                      }
-                      onInclude={() =>
-                        void include({
-                          source: row.identity.source,
-                          sourceKey: row.identity.sourceKey,
-                        })
-                      }
-                    />
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
+        <>
+          <Box
+            display="flex"
+            alignItems="center"
+            justifyContent="space-between"
+            flexWrap="wrap"
+            mb={1}
+            gridGap={8}
+          >
+            <Typography variant="body2" color="textSecondary">
+              {identities.length} listed · {unlinkedCount} unlinked · {excludedCount} excluded
+            </Typography>
+            <PaginationControls table={table} />
+          </Box>
+
+          <DataTable
+            table={table}
+            isLoading={false}
+            label="Identities"
+            // Dimmed rather than hidden: the row is what somebody reads to find
+            // out an account was excluded on purpose, and it is the only place
+            // the decision can be undone.
+            rowClassName={(row) => (row.exclusion === null ? undefined : classes.excludedRow)}
+          />
+        </>
       )}
     </>
   );

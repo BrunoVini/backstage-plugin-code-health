@@ -240,7 +240,9 @@ describe("RepositoryTable", () => {
     await render(<RepositoryTable repositories={repos} totalCount={1} isLoading={false} />);
 
     // then
-    expect(screen.getByText("100")).toHaveAttribute("data-band", "good");
+    // Scoped to the cell's own paragraph: the page-size selector offers a
+    // hundred rows too.
+    expect(screen.getByText("100", { selector: "p" })).toHaveAttribute("data-band", "good");
   });
 
   it("should leave the health empty when nothing about the row could be measured", async () => {

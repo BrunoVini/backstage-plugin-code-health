@@ -24,6 +24,10 @@ import {
   type LinkIdentity,
 } from "../../domain/commands/link_identity";
 import type { ListContributorSummaries } from "../../domain/commands/list_contributor_summaries";
+import {
+  MAX_DIRECTORY_USERS_LIMIT,
+  type ListDirectoryUsers,
+} from "../../domain/commands/list_directory_users";
 import type { ListIdentities } from "../../domain/commands/list_identities";
 import type { ListOwnedRepositories } from "../../domain/commands/list_owned_repositories";
 import type { ListRepositorySummaries } from "../../domain/commands/list_repository_summaries";
@@ -91,6 +95,18 @@ const exclusionSchema = z.object({
   source: z.string(),
   sourceKey: z.string().min(1),
   reason: z.string().min(1),
+});
+
+/**
+ * What a directory search asks for: the text, and how many answers at most.
+ *
+ * `q` may be empty — the screen asks for nothing while the field is empty,
+ * and the command answers with nobody rather than the whole directory. The
+ * limit is bounded so a URL cannot turn a search into a listing.
+ */
+const directorySearchSchema = z.object({
+  q: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(MAX_DIRECTORY_USERS_LIMIT).optional(),
 });
 
 /**
@@ -162,6 +178,7 @@ export interface CodeHealthRouterOptions {
   readonly repositoryTrend: GetRepositoryTrend;
   readonly owned: ListOwnedRepositories;
   readonly identities: ListIdentities;
+  readonly directoryUsers: ListDirectoryUsers;
   readonly links: LinkIdentity;
   readonly exclusions: ExcludeIdentity;
   readonly access: AuthorizeAdministrator;
@@ -207,6 +224,27 @@ export const createCodeHealthRouter = (options: CodeHealthRouterOptions): expres
         ...(sources === undefined ? {} : { sources }),
         ...(linked === undefined ? {} : { linked }),
         ...(excluded === undefined ? {} : { excluded }),
+      }),
+    });
+  });
+
+  /**
+   * The catalog users matching what somebody typed into the link field.
+   *
+   * A signed-in user, like every write on this screen: the answer is a slice
+   * of the organisation's directory, and it is asked for by the person about
+   * to make a link, never by a service.
+   */
+  router.get(`/${version}/identities/users`, async (request, response) => {
+    await options.httpAuth.credentials(request, { allow: ["user"] });
+
+    const parsed = directorySearchSchema.safeParse(request.query);
+    if (!parsed.success) throw new InputError(parsed.error.message);
+
+    response.json({
+      items: await options.directoryUsers.run({
+        query: parsed.data.q ?? "",
+        ...(parsed.data.limit === undefined ? {} : { limit: parsed.data.limit }),
       }),
     });
   });

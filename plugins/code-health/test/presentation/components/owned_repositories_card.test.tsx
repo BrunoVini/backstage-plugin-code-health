@@ -1,6 +1,6 @@
 import { renderInTestApp } from "@backstage/test-utils";
 import type { OwnershipInfo } from "@rios0rios0/backstage-plugin-code-health-common";
-import { screen, within } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import { OwnedRepositoriesCard } from "../../../src/presentation/components/owned_repositories_card";
 import { rootRouteRef } from "../../../src/routes";
 import { RepositoryBuilder } from "../../builders/repository_builder";
@@ -48,6 +48,12 @@ const renderCard = (
     { mountedRoutes: { "/": rootRouteRef } },
   );
 
+/** The repository names in the order the body shows them. */
+const namesInOrder = (): string[] =>
+  within(screen.getByRole("table", { name: "Owned repositories" }))
+    .getAllByTitle("Open the repository's page")
+    .map((link) => link.textContent ?? "");
+
 describe("OwnedRepositoriesCard", () => {
   it("should list the worst repository first, with the unmeasured after it", async () => {
     // given
@@ -59,14 +65,106 @@ describe("OwnedRepositoriesCard", () => {
     });
 
     // when
-    const rows = screen.getAllByRole("row").slice(1);
+    const names = namesInOrder();
 
     // then
-    // Two unmeasured rows tie rather than fighting, so they keep the order the
-    // backend sent them in.
-    expect(
-      rows.map((row) => within(row).getAllByRole("cell")[0].textContent),
-    ).toEqual(["legacy-gateway", "billing", "brand-new", "just-added"]);
+    expect(names.slice(0, 2)).toEqual(["legacy-gateway", "billing"]);
+    expect(names.slice(2).sort()).toEqual(["brand-new", "just-added"]);
+  });
+
+  it("should keep the unmeasured last when the health column is turned around", async () => {
+    // given
+    // Best first is a reading too, and a repository nothing has measured is
+    // not the best one either.
+    await renderCard({
+      repositories: [healthy, unmeasured, unhealthy],
+    });
+
+    // when
+    fireEvent.click(screen.getByText("Health"));
+
+    // then
+    expect(namesInOrder()).toEqual(["billing", "legacy-gateway", "brand-new"]);
+  });
+
+  it("should sort on any column, like the tables", async () => {
+    // given
+    await renderCard({ repositories: [unhealthy, healthy] });
+
+    // when
+    fireEvent.click(screen.getByText("Repository"));
+
+    // then
+    expect(namesInOrder()).toEqual(["billing", "legacy-gateway"]);
+
+    // when
+    fireEvent.click(screen.getByText("Repository"));
+
+    // then
+    expect(namesInOrder()).toEqual(["legacy-gateway", "billing"]);
+  });
+
+  it("should sort a numeric column with the unmeasured after the measured", async () => {
+    // given
+    // A numeric column opens on its highest figure, like the tables' do, and
+    // the repository nothing has measured sits after the measured either way.
+    const covered = RepositoryBuilder.create().withName("covered").withCoverage(60).build();
+
+    // when
+    await renderCard({ repositories: [unmeasured, covered, healthy] });
+    fireEvent.click(screen.getByText("Coverage"));
+
+    // then
+    expect(namesInOrder()).toEqual(["billing", "covered", "brand-new"]);
+
+    // when
+    fireEvent.click(screen.getByText("Coverage"));
+
+    // then
+    expect(namesInOrder()).toEqual(["covered", "billing", "brand-new"]);
+  });
+
+  it("should filter by name and by the status columns", async () => {
+    // given
+    await renderCard({ repositories: [healthy, unhealthy, unmeasured] });
+
+    // when
+    fireEvent.change(screen.getByLabelText("Filter name"), { target: { value: "gate" } });
+
+    // then
+    expect(namesInOrder()).toEqual(["legacy-gateway"]);
+    expect(screen.getByText("1 of 3 repositories")).toBeInTheDocument();
+
+    // when
+    fireEvent.change(screen.getByLabelText("Filter name"), { target: { value: "" } });
+    fireEvent.change(screen.getByLabelText("Filter ci"), { target: { value: "passing" } });
+
+    // then
+    expect(namesInOrder()).toEqual(["billing"]);
+  });
+
+  it("should page ten at a time, so the charts below stay on the screen", async () => {
+    // given
+    const many = Array.from({ length: 12 }, (_, index) =>
+      RepositoryBuilder.create()
+        .withName(`repo-${String(index).padStart(2, "0")}`)
+        .withCoverage(index)
+        .build(),
+    );
+
+    // when
+    await renderCard({ repositories: many });
+
+    // then
+    expect(namesInOrder()).toHaveLength(10);
+    expect(screen.getByText("1 / 2")).toBeInTheDocument();
+    expect(screen.getByLabelText("Rows per page")).toHaveValue("10");
+
+    // when
+    fireEvent.click(screen.getByText("Next"));
+
+    // then
+    expect(namesInOrder()).toHaveLength(2);
   });
 
   it("should link each repository to its own page", async () => {

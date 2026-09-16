@@ -246,6 +246,44 @@ describe("ContributorDetailPage", () => {
     ).toBeInTheDocument();
   });
 
+  it("should compare the person's averages with the team's when the trend carries them", async () => {
+    // given
+    // The card says how far each rate sits from the team's, and the team it
+    // means is the one the score was read against.
+    const summary = aFullSummary();
+    const trendService = new StubTrendService().withContributorTrend(
+      aContributorTrend({
+        key: KEY,
+        summary,
+        score: aTrendPoint("2026-08-01", summary).score,
+        fleet: {
+          days: 92,
+          people: 5,
+          commits: summary.commits / 92 / 2,
+          pullRequestsOpened: 0,
+          pullRequestsMerged: 0,
+          reviewsGiven: 0,
+          linesOfCode: null,
+          changedFiles: null,
+          pipelineRuns: 0,
+          codingSeconds: null,
+          issuesResolved: null,
+        },
+        points: [aTrendPoint("2026-08-01", summary)],
+      }),
+    );
+
+    // when
+    await renderPage({ trendService });
+
+    // then
+    expect(await screen.findByText("Averages")).toBeInTheDocument();
+    expect(screen.getByText("100% above the team")).toBeInTheDocument();
+    expect(
+      screen.getByText(/The team is the 5 people measured in this range/u),
+    ).toBeInTheDocument();
+  });
+
   it("should say how the integrations join the score once one is configured", async () => {
     // given
     // Every weight on the card moves when an integration is switched on, and a

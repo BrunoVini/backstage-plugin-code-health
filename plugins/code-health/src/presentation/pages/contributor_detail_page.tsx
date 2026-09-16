@@ -438,6 +438,7 @@ export const ContributorDetailPage = ({
                 summary={summary}
                 window={range.window}
                 capabilities={capabilities}
+                fleet={response.fleet}
               />
             </Grid>
           )}

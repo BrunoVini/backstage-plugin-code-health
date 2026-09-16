@@ -1,5 +1,6 @@
 import type {
   ConfluenceContributorMetrics,
+  ContributorFleetRates,
   ContributorSummary,
   ContributorTrendPoint,
   IntegrationCapabilities,
@@ -11,6 +12,7 @@ import type {
 } from "@rios0rios0/backstage-plugin-code-health-common";
 import {
   computeProductivityScore,
+  contributorFleetRatesOf,
   fleetReferenceOf,
   NO_INTEGRATIONS,
   windowDaysOf,
@@ -35,6 +37,13 @@ import { sonarByRepository } from "./list_contributor_summaries";
 export interface ContributorTrend {
   readonly summary: ContributorSummary | null;
   readonly score: ProductivityScore | null;
+  /**
+   * The team's mean rates over the whole window: the same reference the score
+   * above was read against, so the Averages card can put each of the person's
+   * rates beside it. Taken over everybody the window measured, whether or not
+   * the person asked about is among them.
+   */
+  readonly fleet: ContributorFleetRates;
   readonly points: readonly ContributorTrendPoint[];
 }
 
@@ -201,17 +210,22 @@ export class GetContributorTrend {
       sonarByRepository: sonar.at(to),
     });
     const summary = windowRows.find((row) => row.key === input.key) ?? null;
+    const windowDays = windowDaysOf({
+      from: input.from.toISOString(),
+      to: input.to.toISOString(),
+    });
     const score =
       summary === null
         ? null
         : computeProductivityScore(
             summary,
-            fleetReferenceOf(
-              windowRows,
-              windowDaysOf({ from: input.from.toISOString(), to: input.to.toISOString() }),
-            ),
+            fleetReferenceOf(windowRows, windowDays),
             capabilities,
           );
+    // The same rows and the same day count the score's reference was taken
+    // over, so the team column on the card and the sentence behind each score
+    // component are one figure printed twice.
+    const fleet = contributorFleetRatesOf(windowRows, windowDays);
 
     const points = bucketsInWindow(input.from, input.to, input.bucket).map((start) => {
       const last = bucketEnd(start, input.bucket, to);
@@ -268,6 +282,6 @@ export class GetContributorTrend {
       };
     });
 
-    return { summary, score, points };
+    return { summary, score, fleet, points };
   }
 }

@@ -1,10 +1,12 @@
 import type { ContributorSummary } from "./contributor_summary";
 import type { CoverageInfo } from "./coverage";
-import type { IdentityRow } from "./identity";
+import type { ContributorFleetRates } from "./fleet_rates";
+import type { DirectoryUser, IdentityRow } from "./identity";
 import type { IntegrationCapabilities } from "./integrations";
 import type { OwnershipInfo } from "./ownership";
 import type { ProductivityScore } from "./productivity_score";
 import type { RepositoryHealthScore } from "./repository_health_score";
+import type { RepositoryFleetRates } from "./repository_rates";
 import type { RepositorySummary } from "./repository_summary";
 import type { TimeSeriesBucket, TimeSeriesPoint } from "./time_series";
 import type { ContributorTrendPoint, RepositoryTrendPoint } from "./trend";
@@ -63,6 +65,20 @@ export interface ListIdentitiesResponse {
   readonly items: readonly IdentityRow[];
 }
 
+/**
+ * The catalog users whose name, address or entity name contains what was
+ * typed, from `/v1/identities/users?q=`.
+ *
+ * The other half of a link, found by searching rather than typed out. A
+ * reference is what the backend validates against, but `user:default/j.doe_example.com`
+ * is not something anybody should have to spell to say who an account belongs
+ * to — and the suggestions on a row are the plugin's opinion, which is no help
+ * when it has none.
+ */
+export interface ListDirectoryUsersResponse {
+  readonly items: readonly DirectoryUser[];
+}
+
 export interface LinkIdentityRequest {
   readonly source: string;
   readonly sourceKey: string;
@@ -98,6 +114,12 @@ export interface RefreshResponse {
  * The summary is null when nothing was recorded under the key in the window,
  * which is how a stale link is told apart from a quiet month: the points are
  * still returned, all zero, and the page says which it is.
+ *
+ * `fleet` is the team's mean rates over the same window — the reference the
+ * score was read against, carried so the Averages card can say how far each
+ * of the person's rates sits from it. Sent by the backend rather than worked
+ * out in the browser, because the browser only ever holds this one person's
+ * row. Null from a backend that predates it.
  */
 export interface GetContributorTrendResponse {
   readonly key: string;
@@ -105,16 +127,24 @@ export interface GetContributorTrendResponse {
   readonly bucket: TimeSeriesBucket;
   readonly summary: ContributorSummary | null;
   readonly score: ProductivityScore | null;
+  readonly fleet: ContributorFleetRates | null;
   readonly points: readonly ContributorTrendPoint[];
 }
 
-/** One repository's history, bucketed, from `/v1/repositories/:id/trend`. */
+/**
+ * One repository's history, bucketed, from `/v1/repositories/:id/trend`.
+ *
+ * `fleet` is the mean rates across the fleet's active repositories over the
+ * same window, for the Averages card; null from a backend that predates it, or
+ * one that was not given the repositories reader to take them from.
+ */
 export interface GetRepositoryTrendResponse {
   readonly id: string;
   readonly window: TimeWindow;
   readonly bucket: TimeSeriesBucket;
   readonly summary: RepositorySummary;
   readonly score: RepositoryHealthScore;
+  readonly fleet: RepositoryFleetRates | null;
   readonly points: readonly RepositoryTrendPoint[];
 }
 

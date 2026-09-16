@@ -20,6 +20,7 @@ export const aContributorTrend = (
   bucket: "week",
   summary: null,
   score: null,
+  fleet: null,
   points: [],
   ...overrides,
 });
@@ -50,6 +51,7 @@ export const aRepositoryTrend = (
     window: WINDOW,
     bucket: "week",
     score: computeRepositoryHealthScore(summary),
+    fleet: null,
     points: [],
     ...overrides,
     summary,

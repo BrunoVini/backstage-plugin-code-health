@@ -1,12 +1,17 @@
 import { NotFoundError } from "@backstage/errors";
 import type {
+  RepositoryFleetRates,
   RepositoryHealthScore,
   RepositorySummary,
   RepositoryTrendPoint,
   TimeSeriesBucket,
   WakaTimeMetrics,
 } from "@rios0rios0/backstage-plugin-code-health-common";
-import { computeRepositoryHealthScore } from "@rios0rios0/backstage-plugin-code-health-common";
+import {
+  computeRepositoryHealthScore,
+  repositoryFleetRatesOf,
+  windowDaysOf,
+} from "@rios0rios0/backstage-plugin-code-health-common";
 import { bucketEnd, bucketsInWindow } from "../entities/bucket";
 import type { CodeHealthEvent } from "../entities/code_health_event";
 import { lastDayOf, startOfDay, toDay, type Day } from "../entities/day";
@@ -29,11 +34,17 @@ import type {
   ContributorMetricRow,
 } from "../repositories/code_health_store";
 import type { CatalogReader } from "../services/catalog_reader";
+import type { ListRepositorySummaries } from "./list_repository_summaries";
 import { resolveOwnerProfiles } from "./list_repository_summaries";
 
 export interface RepositoryTrend {
   readonly summary: RepositorySummary;
   readonly score: RepositoryHealthScore;
+  /**
+   * The fleet's mean rates over the same window, for the Averages card, or
+   * null when the command was given nothing to take them from.
+   */
+  readonly fleet: RepositoryFleetRates | null;
   readonly points: readonly RepositoryTrendPoint[];
 }
 
@@ -100,6 +111,14 @@ export class GetRepositoryTrend {
      * failure.
      */
     private readonly catalog?: Pick<CatalogReader, "getEntityProfiles">,
+    /**
+     * The rows of every tracked repository over the window, from which the
+     * fleet's mean rates are taken. The same command the repositories table
+     * reads, so the average this repository is compared against is the
+     * average of the rows that table shows. Optional: without it the trend
+     * carries no fleet, and the card says it has nothing to compare against.
+     */
+    private readonly fleet?: Pick<ListRepositorySummaries, "run">,
   ) {}
 
   /**
@@ -122,19 +141,31 @@ export class GetRepositoryTrend {
     const to = lastDayOf(input.to);
     const repositoryIds = [input.repositoryId];
 
-    const [tracked, collected, collectedWakaTime, [baseline], rangeSnapshots, people] =
-      await Promise.all([
-        this.store.getTrackedRepository(input.repositoryId),
-        this.store.listEvents({ from: input.from, to: input.to, repositoryIds }),
-        this.store.listContributorMetrics<WakaTimeMetrics>({
-          source: "wakatime",
-          from,
-          to,
-        }),
-        this.store.listLatestSnapshots({ day: from, repositoryIds }),
-        this.store.listSnapshots({ from, to, repositoryIds }),
-        loadPersonDirectory(this.store),
-      ]);
+    const [
+      tracked,
+      collected,
+      collectedWakaTime,
+      [baseline],
+      rangeSnapshots,
+      people,
+      fleetRows,
+    ] = await Promise.all([
+      this.store.getTrackedRepository(input.repositoryId),
+      this.store.listEvents({ from: input.from, to: input.to, repositoryIds }),
+      this.store.listContributorMetrics<WakaTimeMetrics>({
+        source: "wakatime",
+        from,
+        to,
+      }),
+      this.store.listLatestSnapshots({ day: from, repositoryIds }),
+      this.store.listSnapshots({ from, to, repositoryIds }),
+      loadPersonDirectory(this.store),
+      // Every repository's row over the whole window, read once beside this
+      // one's events. It is the repositories table's own query, which is what
+      // makes "the fleet's average" here the average of the rows that table
+      // shows rather than a second reading that could disagree with it.
+      this.fleet === undefined ? null : this.fleet.run({ from: input.from, to: input.to }),
+    ]);
 
     // Both resolved here rather than per bucket, so the headline row and every
     // point under it are built from the same measurements and cannot disagree
@@ -187,6 +218,14 @@ export class GetRepositoryTrend {
       return { day: start, summary: row, score: computeRepositoryHealthScore(row) };
     });
 
-    return { summary, score: computeRepositoryHealthScore(summary), points };
+    const fleet =
+      fleetRows === null
+        ? null
+        : repositoryFleetRatesOf(
+            fleetRows,
+            windowDaysOf({ from: input.from.toISOString(), to: input.to.toISOString() }),
+          );
+
+    return { summary, score: computeRepositoryHealthScore(summary), fleet, points };
   }
 }

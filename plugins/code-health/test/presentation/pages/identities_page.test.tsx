@@ -1,5 +1,6 @@
+import type { DirectoryUser } from "@rios0rios0/backstage-plugin-code-health-common";
 import { NO_INTEGRATIONS } from "@rios0rios0/backstage-plugin-code-health-common";
-import { fireEvent, render as renderBare, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render as renderBare, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { IdentitiesPage } from "../../../src/presentation/pages/identities_page";
 import { IdentityRowBuilder } from "../../builders/identity_row_builder";
@@ -33,6 +34,36 @@ const linked = IdentityRowBuilder.create()
   .withEmail("dev@example.com")
   .linkedTo("user:default/dev", "catalog-email")
   .build();
+
+/** The people a search can find, none of whom the suggestions name. */
+const directory: DirectoryUser[] = [
+  {
+    entityRef: "user:default/f.rios_example.com",
+    displayName: "Felipe Rios",
+    email: "f.rios@example.com",
+    picture: null,
+  },
+  {
+    entityRef: "user:default/fernanda",
+    displayName: "Fernanda Lima",
+    email: "fernanda@example.com",
+    picture: null,
+  },
+  {
+    entityRef: "user:default/ana",
+    displayName: "Ana Costa",
+    email: "ana@example.com",
+    picture: null,
+  },
+];
+
+/** The picker on the one unlinked row, by the label it carries. */
+const pickerFor = (sourceKey: string): HTMLElement =>
+  screen.getByLabelText(`Catalog user for ${sourceKey}`);
+
+/** The rows of the listing, header and filter rows left out. */
+const listedRows = (): HTMLElement[] =>
+  within(screen.getByRole("table", { name: "Identities" })).getAllByRole("row").slice(2);
 
 describe("IdentitiesPage", () => {
   it("should list the accounts with their source and their person", async () => {
@@ -100,7 +131,7 @@ describe("IdentitiesPage", () => {
     await waitFor(() => expect(screen.getByText("Dev Example")).toBeInTheDocument());
 
     // when
-    fireEvent.change(screen.getByLabelText("Catalog user for jrios"), {
+    fireEvent.change(pickerFor("jrios"), {
       target: { value: "  user:default/manual  " },
     });
     fireEvent.click(screen.getByText("Link"));
@@ -111,6 +142,172 @@ describe("IdentitiesPage", () => {
       // not rejected by the backend for a reason nobody can see.
       expect(screen.getByText("user:default/manual")).toBeInTheDocument(),
     );
+  });
+
+  it("should find a user in the directory by part of their name and link them in one pick", async () => {
+    // given
+    // Nobody should have to type `user:default/f.rios_example.com` to say who
+    // an account belongs to.
+    const service = new StubIdentityService()
+      .withRows([unlinked, linked])
+      .withDirectory(directory);
+    renderPage(service);
+    showEveryAccount();
+    await waitFor(() => expect(screen.getByText("Dev Example")).toBeInTheDocument());
+
+    // when
+    fireEvent.change(pickerFor("jrios"), { target: { value: "rios" } });
+    const option = await screen.findByRole("option", { name: /f\.rios@example\.com/u });
+
+    // then
+    // Found by the address, under the directory heading, beside the two
+    // suggestions the row already carried.
+    expect(within(option).getByText("Felipe Rios")).toBeInTheDocument();
+    expect(screen.getByText("Directory")).toBeInTheDocument();
+    expect(screen.getByText("Likely matches")).toBeInTheDocument();
+    expect(service.searches).toEqual(["rios"]);
+
+    // when
+    fireEvent.click(option);
+    fireEvent.click(screen.getByText("Link"));
+
+    // then
+    await waitFor(() =>
+      expect(screen.getByText("user:default/f.rios_example.com")).toBeInTheDocument(),
+    );
+  });
+
+  it("should offer the likely matches in the picker before anything is typed", async () => {
+    // given
+    const service = new StubIdentityService().withRows([unlinked]).withDirectory(directory);
+    renderPage(service);
+    await waitFor(() => expect(screen.getByText("Felipe Rios")).toBeInTheDocument());
+
+    // when
+    // Pressing on the empty field is what opens the list; focusing and then
+    // pressing would open it and close it again.
+    fireEvent.mouseDown(pickerFor("jrios"));
+
+    // then
+    // Scoped to the picker's list: the page's native selects are options too.
+    const options = within(await screen.findByRole("listbox")).getAllByRole("option");
+    expect(options.map((option) => option.textContent)).toEqual([
+      expect.stringContaining("F. Rios (directory)"),
+      expect.stringContaining("Someone Else"),
+    ]);
+    expect(within(options[1] as HTMLElement).getByText(/most of the name matches/u)).toBeInTheDocument();
+    expect(service.searches).toEqual([]);
+  });
+
+  it("should refuse to send a bare name as a reference", async () => {
+    // given
+    // A name typed on its own is not a reference, and sending it would only
+    // come back as a refusal the reader could not act on.
+    const service = new StubIdentityService().withRows([unlinked]).withDirectory(directory);
+    renderPage(service);
+    await waitFor(() => expect(screen.getByText("Felipe Rios")).toBeInTheDocument());
+
+    // when
+    fireEvent.change(pickerFor("jrios"), { target: { value: "Ana" } });
+    await screen.findByRole("option", { name: /Ana Costa/u });
+
+    // then
+    expect(screen.getByText("Link").closest("button")).toBeDisabled();
+  });
+
+  it("should say when nobody in the directory matches", async () => {
+    // given
+    const service = new StubIdentityService().withRows([unlinked]).withDirectory(directory);
+    renderPage(service);
+    await waitFor(() => expect(screen.getByText("Felipe Rios")).toBeInTheDocument());
+
+    // when
+    fireEvent.change(pickerFor("jrios"), { target: { value: "zzzz" } });
+
+    // then
+    expect(
+      await screen.findByText("Nobody in the directory matches that."),
+    ).toBeInTheDocument();
+  });
+
+  it("should say plainly when the directory could not be searched", async () => {
+    // given
+    const service = new StubIdentityService()
+      .withRows([unlinked])
+      .withSearchFailure(new Error("catalog is down"));
+    renderPage(service);
+    await waitFor(() => expect(screen.getByText("Felipe Rios")).toBeInTheDocument());
+
+    // when
+    fireEvent.change(pickerFor("jrios"), { target: { value: "rios" } });
+
+    // then
+    expect(
+      await screen.findByText(/The directory could not be searched: catalog is down/u),
+    ).toBeInTheDocument();
+  });
+
+  it("should page, sort and filter the listing like the tables", async () => {
+    // given
+    const rows = Array.from({ length: 12 }, (_, index) =>
+      IdentityRowBuilder.create()
+        .from("vcs", `dev-${String(index).padStart(2, "0")}@example.com`)
+        .named(`Dev ${String(index).padStart(2, "0")}`)
+        .build(),
+    );
+    const service = new StubIdentityService().withRows(rows);
+    renderPage(service);
+    await waitFor(() => expect(screen.getByText("Dev 00")).toBeInTheDocument());
+    expect(listedRows()).toHaveLength(12);
+
+    // when
+    fireEvent.change(screen.getByLabelText("Rows per page"), { target: { value: "10" } });
+
+    // then
+    expect(listedRows()).toHaveLength(10);
+    expect(screen.getByText("1 / 2")).toBeInTheDocument();
+
+    // when
+    fireEvent.click(screen.getByText("Next"));
+
+    // then
+    expect(listedRows()).toHaveLength(2);
+    expect(screen.getByText("Dev 10")).toBeInTheDocument();
+
+    // when
+    fireEvent.click(screen.getByText("Account"));
+
+    // then
+    // Turned around, and back on the first page, which now opens on the last
+    // accounts rather than the first.
+    await waitFor(() => expect(screen.getByText("Dev 11")).toBeInTheDocument());
+    expect(screen.queryByText("Dev 00")).not.toBeInTheDocument();
+
+    // when
+    fireEvent.change(screen.getByLabelText("Filter account"), { target: { value: "dev-07" } });
+
+    // then
+    await waitFor(() => expect(listedRows()).toHaveLength(1));
+    expect(screen.getByText("Dev 07")).toBeInTheDocument();
+  });
+
+  it("should dim an excluded row rather than hide it", async () => {
+    // given
+    const bot = IdentityRowBuilder.create()
+      .from("vcs", "build-service")
+      .named(null)
+      .excludedAs("automated-bot")
+      .build();
+    const service = new StubIdentityService().withRows([unlinked, bot]);
+
+    // when
+    renderPage(service);
+    await waitFor(() => expect(screen.getByText("Automated bot")).toBeInTheDocument());
+
+    // then
+    const [person, excluded] = listedRows();
+    expect(person?.className).not.toMatch(/excludedRow/u);
+    expect(excluded?.className).toMatch(/excludedRow/u);
   });
 
   it("should drop a row off the listing once it has a person", async () => {
@@ -164,7 +361,7 @@ describe("IdentitiesPage", () => {
     await waitFor(() => expect(screen.getByText("Felipe Rios")).toBeInTheDocument());
 
     // when
-    fireEvent.change(screen.getByLabelText("Catalog user for jrios"), {
+    fireEvent.change(pickerFor("jrios"), {
       target: { value: "user:default/ghost" },
     });
     fireEvent.click(screen.getByText("Link"));

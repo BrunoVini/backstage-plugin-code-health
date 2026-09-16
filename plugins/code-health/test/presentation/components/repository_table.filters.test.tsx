@@ -271,12 +271,37 @@ describe("RepositoryTable pagination", () => {
     expect(screen.getByText("1 / 2")).toBeInTheDocument();
   });
 
-  it("should hide the pagination controls when everything fits on one page", async () => {
-    // given / when
+  it("should still offer the page size when everything fits on one page", async () => {
+    // given
+    // The controls used to appear only past the first page, which made
+    // pagination look like something one table had and another did not, and
+    // left nobody a way to ask for a shorter page.
     await renderTable([RepositoryBuilder.create().withName("only").build()]);
 
+    // when / then
+    expect(screen.getByLabelText("Rows per page")).toHaveValue("25");
+    expect(screen.getByText("1 / 1")).toBeInTheDocument();
+    expect(screen.getByText("Next").closest("button")).toBeDisabled();
+    expect(screen.getByText("Previous").closest("button")).toBeDisabled();
+  });
+
+  it("should page by the size that was picked", async () => {
+    // given
+    await renderTable(manyRepos());
+
+    // when
+    fireEvent.change(screen.getByLabelText("Rows per page"), { target: { value: "10" } });
+
     // then
-    expect(screen.queryByText("Next")).not.toBeInTheDocument();
+    expect(visibleRepositoryNames()).toHaveLength(10);
+    expect(screen.getByText("1 / 3")).toBeInTheDocument();
+
+    // when
+    fireEvent.change(screen.getByLabelText("Rows per page"), { target: { value: "50" } });
+
+    // then
+    expect(visibleRepositoryNames()).toHaveLength(30);
+    expect(screen.getByText("1 / 1")).toBeInTheDocument();
   });
 });
 

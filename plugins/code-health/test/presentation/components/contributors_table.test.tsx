@@ -529,6 +529,29 @@ describe("ContributorsTable", () => {
     // then
     expect(screen.getByText("1 / 2")).toBeInTheDocument();
   });
+
+  it("should offer the same page sizes as the repositories table, on one page or ten", async () => {
+    // given
+    // Under twenty-five people the controls used to vanish, which on any fleet
+    // with more repositories than people read as a table that did not page.
+    const contributors = Array.from({ length: 12 }, (_, index) =>
+      ContributorBuilder.create()
+        .withDisplayName(`user-${String(index).padStart(2, "0")}`)
+        .withLinesOfCode(index)
+        .build(),
+    );
+    await render(
+      <ContributorsTable {...defaultProps} contributors={contributors} totalCount={12} />,
+    );
+    expect(screen.getByText("1 / 1")).toBeInTheDocument();
+
+    // when
+    fireEvent.change(screen.getByLabelText("Rows per page"), { target: { value: "10" } });
+
+    // then
+    expect(screen.getByText("1 / 2")).toBeInTheDocument();
+    expect(screen.getAllByRole("row")).toHaveLength(12);
+  });
 });
 
 describe("ContributorsTable churn and pull request columns", () => {

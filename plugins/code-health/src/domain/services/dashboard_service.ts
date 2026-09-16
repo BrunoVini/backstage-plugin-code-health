@@ -1,6 +1,7 @@
 import type {
   ContributorSummary,
   CoverageInfo,
+  DirectoryUser,
   ExclusionReason,
   GetAccessResponse,
   GetContributorTrendResponse,
@@ -83,6 +84,13 @@ export interface IdentityService {
     linked?: boolean;
     excluded?: boolean;
   }): Promise<IdentityRow[]>;
+
+  /**
+   * The catalog users whose name, address or entity name contains `query`,
+   * for the picker behind a link. Answered by the backend, which is the only
+   * side that can read the directory, and asked only once the typing pauses.
+   */
+  listDirectoryUsers(query: string): Promise<DirectoryUser[]>;
 
   linkIdentity(link: {
     source: IdentitySource;

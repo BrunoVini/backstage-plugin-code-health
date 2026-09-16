@@ -13,6 +13,7 @@ import { ExcludeIdentity } from "./domain/commands/exclude_identity";
 import { IngestRepositoryHistory } from "./domain/commands/ingest_repository_history";
 import { LinkIdentity } from "./domain/commands/link_identity";
 import { ListContributorSummaries } from "./domain/commands/list_contributor_summaries";
+import { ListDirectoryUsers } from "./domain/commands/list_directory_users";
 import { ListIdentities } from "./domain/commands/list_identities";
 import { ListOwnedRepositories } from "./domain/commands/list_owned_repositories";
 import { ListRepositorySummaries } from "./domain/commands/list_repository_summaries";
@@ -132,9 +133,12 @@ export const codeHealthPlugin = createBackendPlugin({
               directory: catalogReader,
               capabilities,
             }),
-            repositoryTrend: new GetRepositoryTrend(store, catalogReader),
+            // Given the table's own command, so the fleet average a repository's
+            // page compares against is the average of the rows the table shows.
+            repositoryTrend: new GetRepositoryTrend(store, catalogReader, repositories),
             owned: new ListOwnedRepositories(repositories, catalogReader),
             identities: new ListIdentities(store, catalogReader),
+            directoryUsers: new ListDirectoryUsers(catalogReader),
             links: new LinkIdentity(store, catalogReader),
             exclusions: new ExcludeIdentity(store),
             access: new AuthorizeAdministrator({
