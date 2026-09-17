@@ -20,15 +20,24 @@ export class BudgetExhaustedError extends Error {
  * repositories the catalog holds. Retries draw from the same allowance, because
  * a retry is a real request and a host that is failing should not be granted
  * more traffic than one that is healthy.
+ *
+ * It counts what it turned away as well as what it let through. Spending the
+ * last request is not the same as wanting one more: a pass that used its
+ * allowance to the unit finished, and one that was refused did not, and only
+ * the refusals tell an operator which of the two they are looking at.
  */
 export class RequestBudget {
   private consumed = 0;
+  private refusals = 0;
 
-  constructor(private readonly limit: number) {}
+  constructor(readonly limit: number) {}
 
   /** Reserves one request, or returns false when the allowance is gone. */
   tryConsume(): boolean {
-    if (this.consumed >= this.limit) return false;
+    if (this.consumed >= this.limit) {
+      this.refusals += 1;
+      return false;
+    }
     this.consumed += 1;
     return true;
   }
@@ -48,5 +57,10 @@ export class RequestBudget {
 
   get isExhausted(): boolean {
     return this.consumed >= this.limit;
+  }
+
+  /** Requests turned away because the allowance was already gone. */
+  get refused(): number {
+    return this.refusals;
   }
 }

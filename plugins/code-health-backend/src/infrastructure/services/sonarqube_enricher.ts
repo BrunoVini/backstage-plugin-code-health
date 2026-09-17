@@ -9,6 +9,7 @@ import type {
   QualityGateStatus,
   SonarMetrics,
 } from "@rios0rios0/backstage-plugin-code-health-common";
+import { BudgetExhaustedError } from "../../domain/entities/request_budget";
 import type { TrackedRepository } from "../../domain/entities/tracked_repository";
 import type {
   EnrichmentContext,
@@ -103,6 +104,10 @@ export class SonarqubeEnricher implements SonarEnricher {
 
       return this.toMetrics(JSON.parse(response.body) as SonarSummaryResponse);
     } catch (error) {
+      // A spent allowance is a fact about the run, not about this repository,
+      // and reading it as "no Sonar project" would leave the snapshot pass
+      // unable to say how many readings it never took.
+      if (error instanceof BudgetExhaustedError) throw error;
       // The plugin may not be installed, or the project may not exist yet.
       // Neither is a reason to fail the whole snapshot.
       this.options.logger.debug(

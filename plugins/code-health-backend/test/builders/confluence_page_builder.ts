@@ -176,6 +176,8 @@ export const aSpacesResponse = (
   spaces: readonly {
     readonly id: string | number;
     readonly key: string;
+    /** The key the space answers to now, after an administrator changed it. */
+    readonly alias?: string;
     readonly name?: string;
     readonly homepageId?: string | number;
   }[],
@@ -184,10 +186,13 @@ export const aSpacesResponse = (
   results: spaces.map((space) => ({
     id: space.id,
     key: space.key,
+    ...(space.alias === undefined ? {} : { alias: space.alias }),
     name: space.name ?? `${space.key} space`,
     type: "global",
     ...(space.homepageId === undefined ? {} : { homepageId: space.homepageId }),
-    _links: { webui: `/spaces/${space.key}` },
+    // The link carries the alias once there is one, exactly as the site does:
+    // that is how the alias ends up in the annotation in the first place.
+    _links: { webui: `/spaces/${space.alias ?? space.key}` },
   })),
   _links: {
     base: CONFLUENCE_BASE,

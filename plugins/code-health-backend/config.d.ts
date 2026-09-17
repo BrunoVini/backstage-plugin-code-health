@@ -67,9 +67,18 @@ export interface Config {
       backfillChunk?: string;
 
       /**
-       * Hard ceiling on provider requests issued per scheduled run, per host.
-       * Defaults to 500. When the budget is spent the run stops and leaves its
-       * cursors untouched, so the next run resumes where it left off.
+       * Hard ceiling on provider requests issued per scheduled run of the
+       * ingestion actor, and per snapshot pass on the repository loop — the
+       * provider snapshots and the Sonar readings taken beside them. Defaults
+       * to 500. When it is spent the run stops and leaves its cursors
+       * untouched, so the next run resumes where it left off; a snapshot pass
+       * that stops short says how many repositories it left, and takes those
+       * first the next time.
+       *
+       * The optional integrations do not draw on it. WakaTime, Jira and
+       * Confluence each spend their own `requestBudgetPerRun` during the
+       * snapshot pass, so a large space or project costs the pass that
+       * integration's figures and nothing else.
        *
        * @visibility backend
        */
@@ -213,6 +222,21 @@ export interface Config {
        * @visibility backend
        */
       aiDaysPerRun?: number;
+
+      /**
+       * Requests one snapshot pass may spend on WakaTime. Defaults to 500,
+       * which is room for about 120 members with the AI figures on, or 500
+       * without.
+       *
+       * An allowance of its own rather than a share of
+       * `ingestion.requestBudgetPerRun`, so a large organisation never costs
+       * the pass a repository snapshot. A pass costs two requests to find the
+       * members, then one per member for the coding-time window and one more
+       * per member per day of AI figures.
+       *
+       * @visibility backend
+       */
+      requestBudgetPerRun?: number;
     };
 
     /**
@@ -304,6 +328,22 @@ export interface Config {
          * @visibility backend
          */
         maxIssuesPerProject?: number;
+
+        /**
+         * Requests one snapshot pass may spend on Jira. Defaults to 500,
+         * which is room for about two dozen projects at the default
+         * `maxIssuesPerProject`: a project costs up to ten pages of issues,
+         * two backlog lookups and one count per priority, and three
+         * site-wide lookups are paid once per run.
+         *
+         * An allowance of its own rather than a share of
+         * `ingestion.requestBudgetPerRun`, so a project with a large ticket
+         * volume costs the pass its Jira figures and nothing else. A run that
+         * reaches it stops at the project it is on and logs the shortfall.
+         *
+         * @visibility backend
+         */
+        requestBudgetPerRun?: number;
       };
 
       confluence?: {
@@ -354,6 +394,24 @@ export interface Config {
          * @visibility backend
          */
         maxAnalyticsLookups?: number;
+
+        /**
+         * Requests one snapshot pass may spend on Confluence. Defaults to
+         * what the three caps above can need — 2,700: one version history for
+         * each of 500 pages, up to twelve bodies for each of 150 pages
+         * measured for volume, 200 analytics lookups, and 200 for the sweeps
+         * that find the pages and the counts behind a few spaces' reports —
+         * so a walk the caps allow is never cut short. Lower it and the caps
+         * become nominal: a run stops at the allowance and keeps what it had.
+         *
+         * An allowance of its own rather than a share of
+         * `ingestion.requestBudgetPerRun`. The sweep used to draw on that one
+         * before a single repository was captured, and one moderately large
+         * space could leave the repository loop with nothing.
+         *
+         * @visibility backend
+         */
+        requestBudgetPerRun?: number;
       };
     };
   };

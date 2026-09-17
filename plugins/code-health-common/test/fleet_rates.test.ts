@@ -14,7 +14,7 @@ const aContributor = (overrides: Partial<ContributorSummary> = {}): ContributorS
   avatarUrl: null,
   profileUrl: null,
   entityRef: null,
-  identities: [],
+  identities: [{ source: "vcs", sourceKey: "jane", displayName: "Jane" }],
   commits: 10,
   linesAdded: 0,
   linesDeleted: 0,
@@ -120,6 +120,36 @@ describe("contributorFleetRatesOf", () => {
     // then
     expect(fleet.codingSeconds).toBe(1800);
     expect(fleet.issuesResolved).toBe(2);
+  });
+
+  it("should keep somebody version control never saw out of the version-control averages", () => {
+    // given
+    // A row known only to Jira carries a zero for every version-control
+    // figure, and none of those zeros is a measurement: read as one it lowers
+    // the bar every real committer is compared against on the card.
+    const rows = [
+      aContributor({ commits: 10, pullRequestsOpened: 4, pipelineRuns: 20 }),
+      aContributor({
+        key: "jira:acct-1",
+        identities: [{ source: "jira", sourceKey: "acct-1", displayName: "Only Jira" }],
+        commits: 0,
+        pullRequestsOpened: 0,
+        pullRequestsMerged: 0,
+        reviewsGiven: 0,
+        pipelineRuns: 0,
+        jiraMetrics: jira(4),
+      }),
+    ];
+
+    // when
+    const fleet = contributorFleetRatesOf(rows, 1);
+
+    // then
+    expect(fleet.people).toBe(2);
+    expect(fleet.commits).toBe(10);
+    expect(fleet.pullRequestsOpened).toBe(4);
+    expect(fleet.pipelineRuns).toBe(20);
+    expect(fleet.issuesResolved).toBe(4);
   });
 
   it("should keep churn per unit, so files are never averaged with lines", () => {

@@ -1,0 +1,3 @@
+kind: 'Fixed'
+body: 'fixed the same tail of repositories being skipped on every snapshot pass whose allowance ran out: the loop now takes the repositories the last pass never reached first — never captured, then oldest capture — and runs before the WakaTime, Jira and Confluence contributor sweeps, so a sweep that overruns the task''s timeout does so with the day''s snapshots already stored'
+time: '2026-09-17T23:07:56.144257637Z'

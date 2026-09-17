@@ -18,6 +18,12 @@
  * each degrades on its own: passing a cap makes the figure it governs null
  * rather than truncating it into an under-count that would look exactly like a
  * quiet quarter.
+ *
+ * The request allowance sits underneath all three. It is Confluence's own,
+ * drawn on by nothing else in the snapshot pass, and its default is what the
+ * default caps can need — so the caps are reachable rather than nominal, and
+ * a walk the caps allow is never cut short by an allowance that was sized for
+ * something else.
  */
 export interface ConfluenceSettings {
   /** Days without an edit after which a page counts as stale. */
@@ -28,6 +34,8 @@ export interface ConfluenceSettings {
   readonly maxPagesForVolume: number;
   /** Pages a run will ask the analytics API about. Premium sites only. */
   readonly maxAnalyticsLookups: number;
+  /** Requests one snapshot pass may spend on Confluence, on an allowance of its own. */
+  readonly requestBudgetPerRun: number;
 }
 
 /**
@@ -43,11 +51,46 @@ export const DEFAULT_CONFLUENCE_MAX_PAGES_PER_RUN = 500;
 export const DEFAULT_CONFLUENCE_MAX_PAGES_FOR_VOLUME = 150;
 export const DEFAULT_CONFLUENCE_MAX_ANALYTICS_LOOKUPS = 200;
 
+/**
+ * Body fetches one page's written volume may cost.
+ *
+ * Measuring an edit needs the body either side of it, so a page with many
+ * versions inside the window is the expensive case. Past this it is skipped
+ * *entirely* rather than measured partially: half a page's edits attributed and
+ * half dropped produces a figure that is wrong in a direction nobody can see,
+ * where an unmeasured page at least says so.
+ */
+export const CONFLUENCE_MAX_VOLUME_FETCHES_PER_PAGE = 12;
+
+/**
+ * What a run spends finding the pages before it walks any of them: the three
+ * sweeps of the window, a page of the search index at a time, the space lookup
+ * and account-name lookups, and the counts behind a few spaces' reports.
+ */
+export const CONFLUENCE_SWEEP_ALLOWANCE = 200;
+
+/**
+ * Every walk the default caps allow, added up, plus the sweeps that find the
+ * pages: one version history per page, up to twelve bodies for each page
+ * measured for volume, one analytics lookup per page, and the searches.
+ *
+ * Derived rather than typed in so the two cannot disagree. An allowance
+ * smaller than the caps makes them nominal — a run stops short of every one of
+ * them and reports the shortfall as a quiet quarter — which is exactly the
+ * inconsistency the shared budget used to have.
+ */
+export const DEFAULT_CONFLUENCE_REQUEST_BUDGET_PER_RUN =
+  DEFAULT_CONFLUENCE_MAX_PAGES_PER_RUN +
+  DEFAULT_CONFLUENCE_MAX_PAGES_FOR_VOLUME * CONFLUENCE_MAX_VOLUME_FETCHES_PER_PAGE +
+  DEFAULT_CONFLUENCE_MAX_ANALYTICS_LOOKUPS +
+  CONFLUENCE_SWEEP_ALLOWANCE;
+
 export const DEFAULT_CONFLUENCE_SETTINGS: ConfluenceSettings = {
   staleAfterDays: DEFAULT_CONFLUENCE_STALE_AFTER_DAYS,
   maxPagesPerRun: DEFAULT_CONFLUENCE_MAX_PAGES_PER_RUN,
   maxPagesForVolume: DEFAULT_CONFLUENCE_MAX_PAGES_FOR_VOLUME,
   maxAnalyticsLookups: DEFAULT_CONFLUENCE_MAX_ANALYTICS_LOOKUPS,
+  requestBudgetPerRun: DEFAULT_CONFLUENCE_REQUEST_BUDGET_PER_RUN,
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;

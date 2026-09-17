@@ -80,7 +80,19 @@ export interface ConfluenceVersionPage {
 
 export interface ConfluenceSpace {
   readonly id: string;
+  /**
+   * The key the space was created with, which is the only one CQL matches.
+   *
+   * Confluence Cloud lets an administrator change a space's key, and the new
+   * one becomes the space's {@link alias}: it is what the space's URL shows
+   * and what the spaces API resolves, so it is what somebody copying a key
+   * into an annotation writes down — while `space in ("…")` in CQL goes on
+   * matching this original one. Every query is built from this field, and the
+   * annotation is only ever used to look it up.
+   */
   readonly key: string;
+  /** The key the space answers to now, when an administrator changed it. */
+  readonly alias: string | null;
   readonly name: string | null;
   readonly url: string | null;
   /**
@@ -452,6 +464,7 @@ export const parseSpacePage = (body: unknown): ConfluenceSpacePage => {
         {
           id,
           key,
+          alias: asString(at(entry, "alias")),
           name: asString(at(entry, "name")),
           url: absolute(base, asString(at(entry, "_links", "webui"))),
           homepageId: asId(at(entry, "homepageId")),

@@ -71,7 +71,8 @@ Hexagonal: `domain/` holds entities, commands and ports; `infrastructure/` holds
 | `src/infrastructure/http/provider_gateway.ts` | The single door every provider request passes through |
 | `src/domain/commands/discover_repositories.ts` | Catalog → tracked repositories |
 | `src/domain/commands/ingest_repository_history.ts` | The two-phase background actor |
-| `src/domain/commands/capture_repository_snapshots.ts` | Daily current-state capture, and every optional enricher's pass |
+| `src/domain/commands/capture_repository_snapshots.ts` | Daily current-state capture — the repositories the last pass never reached first — and every optional enricher's pass, each on its own allowance |
+| `src/domain/entities/snapshot_allowances.ts` | One request allowance per source of the snapshot pass — the repository loop, Sonar, WakaTime, Jira, Confluence — with what each spent, which were refused a request, and the setting that sizes each |
 | `src/domain/entities/person_directory.ts` | Which person an account belongs to and whether that person is measured, built per request from the link and exclusion tables; `loadPersonDirectory`, `measuredEvents` and `measuredContributorMetrics` are the one way every read applies both |
 | `src/domain/commands/reconcile_identities.ts` | The one automatic link: an account whose e-mail matches a catalog `User` |
 | `src/domain/commands/link_identity.ts` / `list_identities.ts` | The Identities screen's read and its two linking writes |
@@ -194,6 +195,50 @@ The wire contract, and the pure functions both sides have to agree on.
 - **A README does not count as documentation.** Nearly every repository has one, so counting it
   would grade the whole fleet documented. It is still reported as a check, because "has a README and
   nothing else" and "has nothing at all" are different conversations to have with a team.
+- **Every source of the snapshot pass spends an allowance of its own.** The enrichers used to draw
+  on the ingestion budget before a single repository was captured, and Confluence's caps alone — 500
+  version histories, twelve bodies for each of 150 pages, 200 analytics lookups — exceed the default
+  500 several times over, so one moderately large space left the repository loop, the only part of
+  the pass nothing else can record, with nothing: silently, and for the same tail of repositories
+  every night. `SnapshotAllowances` hands the loop and Sonar `ingestion.requestBudgetPerRun` and each
+  integration its own `requestBudgetPerRun` (`codeHealth.wakaTime`, `codeHealth.atlassian.jira`,
+  `codeHealth.atlassian.confluence`); Confluence's default is derived from its caps (2,700) so the
+  caps are reachable rather than nominal. The completion line says what each source spent by name,
+  and the pass warns — naming the setting — when it left repositories unvisited, when Sonar could not
+  be asked about some, or when an integration was *refused* a request. Refused rather than
+  exhausted, because an allowance spent to the unit finished, and telling an operator to raise a
+  setting that was exactly enough sends them after a problem that is not there.
+- **The snapshot loop takes the repositories the last pass never reached first**, ordered by the day
+  of each one's most recent snapshot (`listLatestSnapshotDays`): never captured, then oldest capture,
+  ties in the store's order. It needs no cursor, because the snapshots record where the last pass got
+  to, and it is the same staleness-first rule the ingestion actor follows. The loop also runs
+  *before* the WakaTime, Jira and Confluence contributor sweeps: the allowances bound requests, not
+  minutes, and the task's timeout is shared, so a sweep that overruns should do so with the day's
+  snapshots already stored. Only the per-repository Jira and Confluence figures go ahead of the loop,
+  because they ride on the snapshot row itself.
+- **Sonar surfaces an exhausted allowance instead of swallowing it.** `SonarqubeEnricher` rethrows
+  `BudgetExhaustedError` alone; everything else it still reads as "no Sonar project". The loop then
+  stores the snapshot with `sonarMetrics: null`, counts the repository as skipped and warns with the
+  count, because a null on a repository that has a project reads as "no project" everywhere else.
+- **A Confluence space is queried by the key it was created with, whichever key the annotation or
+  `spaceKeys` uses.** Confluence Cloud lets an administrator change a space's key; the new one is the
+  space's `alias`, it is what the URL shows and so what gets copied into an annotation, and the
+  spaces API resolves it — but CQL matches only the original. `resolveSpaces` indexes each answer
+  under both keys, every query is built from `keyFor`, and the allow-list is matched by space id
+  rather than by spelling. Before this the lookup was indexed by the original key alone, so it missed
+  every alias and each count then ran against a key CQL did not know and reported a quiet quarter,
+  with nothing said. A key Confluence lists no space for is warned about, with the entities that
+  carry it, and still measured in case CQL knows it.
+- **Version control measures a person only when an account of theirs came from version control.**
+  `commits`, `pullRequestsMerged` and `reviewsGiven` are plain numbers with no way to say "never
+  asked", so a row known only to Jira carried `commits: 0`, `meanRate` counted it — it skips null,
+  not zero — and the commit mean every real committer was read against sank with each such row.
+  `measuredByVersionControl` reads the row's identities, which are the union of the accounts seen in
+  the window and everything the directory knows about the person: a linked account that was quiet is
+  a measured zero, a quiet window, while a person version control never saw is left out of the
+  version-control means and scored unmeasured on commits, pull requests, churn, reviews and the
+  pipeline, with "no version-control account is linked to this person" as the reason. The trend's
+  zero rows copy the window row's identities, so the rule holds per bucket.
 - **A day is recorded as fetched only when a window covers it end to end**, so "no activity" and
   "not fetched yet" stay distinguishable and the range picker never offers a period it can only
   answer partially.

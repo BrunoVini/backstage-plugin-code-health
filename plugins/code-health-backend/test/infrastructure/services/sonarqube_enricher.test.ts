@@ -1,5 +1,8 @@
 import { mockServices } from "@backstage/backend-test-utils";
-import { RequestBudget } from "../../../src/domain/entities/request_budget";
+import {
+  BudgetExhaustedError,
+  RequestBudget,
+} from "../../../src/domain/entities/request_budget";
 import { ProviderGateway } from "../../../src/infrastructure/http/provider_gateway";
 import { SonarqubeEnricher } from "../../../src/infrastructure/services/sonarqube_enricher";
 import { aTrackedRepository } from "../../builders/tracked_repository_builder";
@@ -147,6 +150,21 @@ describe("SonarqubeEnricher", () => {
     // then
     expect(result).toBeNull();
     expect(server.requests).toEqual([]);
+  });
+
+  it("should let an exhausted allowance through rather than reading it as no project", async () => {
+    // given
+    // A spent allowance is a fact about the run. Swallowed into a null it
+    // would read as "no Sonar project" on every repository after it, and the
+    // snapshot pass could never say how many readings it never took.
+    const { enricher } = createEnricher();
+    server.on("/summary", () => ({ body: measures({ bugs: "0" }) }));
+
+    // when
+    const attempt = enricher.fetch(repository(), { budget: new RequestBudget(0) });
+
+    // then
+    await expect(attempt).rejects.toBeInstanceOf(BudgetExhaustedError);
   });
 
   it("should return nothing when the sonarqube plugin is not installed", async () => {

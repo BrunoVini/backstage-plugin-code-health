@@ -459,9 +459,28 @@ describe("parseSpacePage", () => {
     expect(page.results[0]).toEqual({
       id: "77",
       key: "ENG",
+      alias: null,
       name: "Engineering",
       url: `${CONFLUENCE_BASE}/spaces/ENG`,
       homepageId: "900",
+    });
+  });
+
+  it("should carry the alias a renamed space answers to beside its original key", () => {
+    // given
+    // An administrator changed the key: the site's links, and so the
+    // annotation somebody copies from them, say DATA, while CQL still knows
+    // the space as DS.
+    const body = aSpacesResponse([{ id: 77, key: "DS", alias: "DATA", name: "Data" }]);
+
+    // when
+    const page = parseSpacePage(body);
+
+    // then
+    expect(page.results[0]).toMatchObject({
+      key: "DS",
+      alias: "DATA",
+      url: `${CONFLUENCE_BASE}/spaces/DATA`,
     });
   });
 

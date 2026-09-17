@@ -8,6 +8,7 @@ import type {
 } from "@rios0rios0/backstage-plugin-code-health-common";
 import type { ConfluenceSettings } from "../../../domain/entities/confluence_settings";
 import {
+  CONFLUENCE_MAX_VOLUME_FETCHES_PER_PAGE,
   confluenceStaleCutoff,
   confluenceWindowFor,
 } from "../../../domain/entities/confluence_settings";
@@ -74,17 +75,6 @@ const VERSION_PAGE_SIZE = 100;
  */
 const MAX_VERSIONS_PER_PAGE = 250;
 
-/**
- * Body fetches one page's written volume may cost.
- *
- * Measuring an edit needs the body either side of it, so a page with many
- * versions inside the window is the expensive case. Past this it is skipped
- * *entirely* rather than measured partially: half a page's edits attributed and
- * half dropped produces a figure that is wrong in a direction nobody can see,
- * where an unmeasured page at least says so.
- */
-const MAX_VOLUME_FETCHES_PER_PAGE = 12;
-
 /** Pages walked per space when counting parentless ones. */
 const MAX_SPACE_PAGES = 2_000;
 
@@ -140,6 +130,17 @@ const isNotAvailable = (error: unknown): boolean =>
 /** Whether an error means the run is over rather than that one call failed. */
 const isRunOver = (error: unknown): boolean =>
   error instanceof BudgetExhaustedError || error instanceof CircuitOpenError;
+
+/** What one spaces lookup answered, addressed by whichever key was asked. */
+interface ResolvedSpaces {
+  /** False when the lookup itself failed, so an unmatched key proves nothing. */
+  readonly complete: boolean;
+  readonly find: (key: string) => ConfluenceSpace | null;
+  /** The key CQL matches: the space's original one, or the key as written. */
+  readonly keyFor: (key: string) => string;
+  /** What to compare two keys by: the space id, or the key when unresolved. */
+  readonly identityOf: (key: string) => string;
+}
 
 const toPageReference = (
   content: ConfluenceContent | null,
@@ -208,7 +209,6 @@ export class ConfluenceApiEnricher implements ConfluenceEnricher {
 
     const { settings, atlassian } = this.options;
     const window = confluenceWindowFor(atlassian.historyDays, this.now());
-    const spaceKeys = atlassian.confluence.spaceKeys;
     const drafts = new Map<string, ContributorDraft>();
     const users = new Map<string, ConfluenceUser>();
     const wire: ConfluenceWindow = {
@@ -240,6 +240,13 @@ export class ConfluenceApiEnricher implements ConfluenceEnricher {
     let base: string | null = null;
 
     try {
+      // Whatever was configured, as CQL knows it: a key an administrator has
+      // changed is matched by the spaces API and not by CQL, and a sweep
+      // scoped to the new one would quietly find nothing.
+      const configured = atlassian.confluence.spaceKeys;
+      const resolved = await this.resolveSpaces(configured, context);
+      const spaceKeys = configured.map((key) => resolved.keyFor(key));
+
       const changed = await this.searchAll(
         {
           types: ["page", "blogpost"],
@@ -368,24 +375,53 @@ export class ConfluenceApiEnricher implements ConfluenceEnricher {
     if (!this.isEnabled()) return result;
 
     const { atlassian, settings } = this.options;
-    const configured = new Set(
-      atlassian.confluence.spaceKeys.map((key) => key.toLowerCase()),
-    );
 
     // One entry per space rather than per repository: two components documented
     // in one space share every figure, and asking twice would double the cost
-    // to produce two identical answers.
-    const wanted = new Map<string, string[]>();
+    // to produce two identical answers. Keyed case-insensitively, because a
+    // space key is one however an annotation spells it.
+    const named = new Map<string, { key: string; repositoryIds: string[]; entityRefs: string[] }>();
     for (const repository of repositories) {
       const key = repository.catalogFacts.confluenceSpaceKey;
       if (key === null) continue;
+      const entry = named.get(key.toLowerCase()) ?? { key, repositoryIds: [], entityRefs: [] };
+      entry.repositoryIds.push(repository.id);
+      entry.entityRefs.push(repository.entityRef);
+      named.set(key.toLowerCase(), entry);
+    }
+    if (named.size === 0) return result;
+
+    // Every key in play is looked up in one request, the configured ones
+    // included. A space is matched to the allow-list by what Confluence says
+    // it is rather than by spelling, so an annotation carrying a space's new
+    // key is recognised as the space the configuration named under its old
+    // one — and the other way round.
+    const configured = atlassian.confluence.spaceKeys;
+    const spaces = await this.resolveSpaces(
+      [...configured, ...[...named.values()].map((entry) => entry.key)],
+      context,
+    );
+    const allowed = new Set(configured.map((key) => spaces.identityOf(key)));
+
+    const wanted = [...named.values()].filter((entry) => {
       // A configured allow-list states which spaces this plugin reads at all,
       // so an annotation naming one outside it is honoured as "not tracked"
       // rather than quietly overriding the configuration.
-      if (configured.size > 0 && !configured.has(key.toLowerCase())) continue;
-      wanted.set(key, [...(wanted.get(key) ?? []), repository.id]);
-    }
-    if (wanted.size === 0) return result;
+      if (allowed.size > 0 && !allowed.has(spaces.identityOf(entry.key))) return false;
+      if (spaces.complete && spaces.find(entry.key) === null) {
+        // Measured anyway, because CQL may still know the key — but said,
+        // because a space nobody can find is the one case where every count
+        // below comes back as a quiet quarter and nothing on screen can tell.
+        this.options.logger.warn(
+          `Confluence lists no space with the key ${entry.key}, which ` +
+            `${entry.entityRefs.join(", ")} name in confluence.io/space-key; ` +
+            "its figures will be empty until the annotation names a key or alias " +
+            "the token can read",
+        );
+      }
+      return true;
+    });
+    if (wanted.length === 0) return result;
 
     const now = this.now();
     const window = confluenceWindowFor(atlassian.historyDays, now);
@@ -397,15 +433,13 @@ export class ConfluenceApiEnricher implements ConfluenceEnricher {
     const users = new Map<string, ConfluenceUser>();
     let base: string | null = null;
 
-    const spaces = await this.spacesByKey([...wanted.keys()], context);
-
-    for (const [key, repositoryIds] of wanted) {
+    for (const { key, repositoryIds } of wanted) {
       if (context.signal?.aborted) break;
 
       try {
-        const space = spaces.get(key.toLowerCase()) ?? null;
+        const space = spaces.find(key);
         const measured = await this.measureSpace({
-          key,
+          key: spaces.keyFor(key),
           space,
           window,
           staleBefore,
@@ -699,7 +733,7 @@ export class ConfluenceApiEnricher implements ConfluenceEnricher {
     );
 
     const toFetch = needed.filter((version) => version.body === null).length;
-    if (toFetch > MAX_VOLUME_FETCHES_PER_PAGE) return null;
+    if (toFetch > CONFLUENCE_MAX_VOLUME_FETCHES_PER_PAGE) return null;
 
     const words = new Map<number, number>();
     for (const version of needed) {
@@ -790,37 +824,61 @@ export class ConfluenceApiEnricher implements ConfluenceEnricher {
     }
   }
 
-  private async spacesByKey(
+  /**
+   * The spaces behind a set of keys, whichever key each was asked for by.
+   *
+   * The spaces API resolves a space's alias as readily as its original key,
+   * but it reports the space under the original one — so a lookup indexed by
+   * what came back never matched an annotation written from the space's URL,
+   * and every query for that space then ran CQL against a key CQL does not
+   * know, without a word. The answer is indexed under both keys, and callers
+   * take the original from it for every query they build.
+   *
+   * Losing the lookup costs a name, a link and the homepage id, not the
+   * measurements: a key that could not be resolved is queried as written, which
+   * is right for every space that has never been renamed.
+   */
+  private async resolveSpaces(
     keys: readonly string[],
     context: EnrichmentContext,
-  ): Promise<ReadonlyMap<string, ConfluenceSpace>> {
+  ): Promise<ResolvedSpaces> {
     const found = new Map<string, ConfluenceSpace>();
-    if (keys.length === 0) return found;
+    const distinct = [...new Map(keys.map((key) => [key.toLowerCase(), key])).values()];
+    let complete = true;
 
-    try {
-      const spaces = await this.options.client.paginate<ConfluenceSpace>({
-        context,
-        fetchPage: async (cursor) => {
-          const page = parseSpacePage(
-            await this.options.client.get<unknown>(
-              cursor ?? spacesPath(keys, LISTING_PAGE_SIZE),
-              context,
-            ),
-          );
-          return { items: page.results, next: page.next };
-        },
-      });
-      for (const space of spaces) found.set(space.key.toLowerCase(), space);
-    } catch (error) {
-      if (isRunOver(error)) throw error;
-      // This lookup only supplies a name, a link and the homepage id. Losing it
-      // costs the report those three things, not its measurements.
-      this.options.logger.warn(
-        `could not read the Confluence spaces ${keys.join(", ")}: ${String(error)}`,
-      );
+    if (distinct.length > 0) {
+      try {
+        const spaces = await this.options.client.paginate<ConfluenceSpace>({
+          context,
+          fetchPage: async (cursor) => {
+            const page = parseSpacePage(
+              await this.options.client.get<unknown>(
+                cursor ?? spacesPath(distinct, LISTING_PAGE_SIZE),
+                context,
+              ),
+            );
+            return { items: page.results, next: page.next };
+          },
+        });
+        for (const space of spaces) {
+          found.set(space.key.toLowerCase(), space);
+          if (space.alias !== null) found.set(space.alias.toLowerCase(), space);
+        }
+      } catch (error) {
+        if (isRunOver(error)) throw error;
+        complete = false;
+        this.options.logger.warn(
+          `could not read the Confluence spaces ${distinct.join(", ")}: ${String(error)}`,
+        );
+      }
     }
 
-    return found;
+    return {
+      complete,
+      find: (key) => found.get(key.toLowerCase()) ?? null,
+      keyFor: (key) => found.get(key.toLowerCase())?.key ?? key,
+      identityOf: (key) => found.get(key.toLowerCase())?.id ?? key.toLowerCase(),
+    };
   }
 
   private async measureSpace(input: {
@@ -838,6 +896,7 @@ export class ConfluenceApiEnricher implements ConfluenceEnricher {
     readonly base: string | null;
   }> {
     const { key, space, window, staleBefore, context, users } = input;
+    // The key as CQL knows it, resolved by the caller; never the annotation.
     const spaceKeys = [key];
     const range = { from: window.from, to: window.to };
 

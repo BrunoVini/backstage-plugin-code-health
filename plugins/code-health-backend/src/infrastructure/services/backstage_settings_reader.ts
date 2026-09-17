@@ -10,11 +10,13 @@ import {
   DEFAULT_CONFLUENCE_MAX_ANALYTICS_LOOKUPS,
   DEFAULT_CONFLUENCE_MAX_PAGES_FOR_VOLUME,
   DEFAULT_CONFLUENCE_MAX_PAGES_PER_RUN,
+  DEFAULT_CONFLUENCE_REQUEST_BUDGET_PER_RUN,
   DEFAULT_CONFLUENCE_STALE_AFTER_DAYS,
 } from "../../domain/entities/confluence_settings";
 import { parseChunkDays } from "../../domain/entities/day";
 import {
   DEFAULT_JIRA_MAX_ISSUES_PER_PROJECT,
+  DEFAULT_JIRA_REQUEST_BUDGET_PER_RUN,
   jiraSettingsFrom,
 } from "../../domain/entities/jira_settings";
 import {
@@ -31,6 +33,7 @@ import {
   DEFAULT_WAKATIME_AI_DAYS_PER_RUN,
   DEFAULT_WAKATIME_BASE_URL,
   DEFAULT_WAKATIME_HISTORY_DAYS,
+  DEFAULT_WAKATIME_REQUEST_BUDGET_PER_RUN,
   type CodeHealthSettings,
   type EntityFilter,
 } from "../../domain/entities/ingestion_settings";
@@ -93,6 +96,11 @@ const readConfluenceSettings = (config: Config | undefined): ConfluenceSettings 
     config,
     "maxAnalyticsLookups",
     DEFAULT_CONFLUENCE_MAX_ANALYTICS_LOOKUPS,
+  ),
+  requestBudgetPerRun: readPositiveNumber(
+    config,
+    "requestBudgetPerRun",
+    DEFAULT_CONFLUENCE_REQUEST_BUDGET_PER_RUN,
   ),
 });
 
@@ -207,6 +215,11 @@ export const readCodeHealthSettings = (
         "aiDaysPerRun",
         DEFAULT_WAKATIME_AI_DAYS_PER_RUN,
       ),
+      requestBudgetPerRun: readPositiveNumber(
+        config?.getOptionalConfig("wakaTime"),
+        "requestBudgetPerRun",
+        DEFAULT_WAKATIME_REQUEST_BUDGET_PER_RUN,
+      ),
     },
     atlassian: {
       baseUrl: readBaseUrl(config, "atlassian.baseUrl"),
@@ -253,6 +266,11 @@ export const readCodeHealthSettings = (
           atlassian?.getOptionalConfig("jira"),
           "maxIssuesPerProject",
           DEFAULT_JIRA_MAX_ISSUES_PER_PROJECT,
+        ),
+        requestBudgetPerRun: readPositiveNumber(
+          atlassian?.getOptionalConfig("jira"),
+          "requestBudgetPerRun",
+          DEFAULT_JIRA_REQUEST_BUDGET_PER_RUN,
         ),
       },
     ),

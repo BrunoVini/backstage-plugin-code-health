@@ -1,6 +1,6 @@
 import { confluenceContributions } from "./confluence_metrics";
 import { describeRatePair } from "./contributor_rates";
-import type { ContributorSummary } from "./contributor_summary";
+import { measuredByVersionControl, type ContributorSummary } from "./contributor_summary";
 import type { IntegrationCapabilities, IntegrationId } from "./integrations";
 import { NO_INTEGRATIONS } from "./integrations";
 import {
@@ -92,6 +92,13 @@ export type ProductivityScore = Score;
  * the reference down towards nothing, which would flatter every row that does
  * carry a figure. It is the same rule the maximum followed, and it matters more
  * here: a maximum ignores a wrong zero, a mean is moved by every one of them.
+ *
+ * The version-control figures follow the same rule through the row's
+ * identities rather than through a null, because they have none: somebody
+ * known only to Jira carries `commits: 0`, and that zero used to go into the
+ * commit mean and lower the bar every real committer was read against. Only a
+ * row with a version-control account is measured for commits, pull requests
+ * and reviews — and on such a row a zero is a real zero, a quiet window.
  */
 export interface FleetReference {
   /** Days the window spans, which every figure below is a per-day rate over. */
@@ -143,6 +150,18 @@ export const meanRate = (
   return measured.reduce((total, value) => total + value, 0) / measured.length / days;
 };
 
+/**
+ * A version-control figure, or null on a row version control never measured.
+ *
+ * Exported for the fleet rates the Averages card prints, which read the two
+ * version-control rows the score does not — pull requests opened and pipeline
+ * runs — by the same rule, so the card and the score agree on who the team is.
+ */
+export const versionControl =
+  (pick: (contributor: ContributorSummary) => number) =>
+  (contributor: ContributorSummary): number | null =>
+    measuredByVersionControl(contributor) ? pick(contributor) : null;
+
 export const fleetReferenceOf = (
   contributors: readonly ContributorSummary[],
   windowDays: number,
@@ -151,9 +170,13 @@ export const fleetReferenceOf = (
 
   return {
     days,
-    commits: meanRate(contributors, days, (row) => row.commits),
-    pullRequestsMerged: meanRate(contributors, days, (row) => row.pullRequestsMerged),
-    reviewsGiven: meanRate(contributors, days, (row) => row.reviewsGiven),
+    commits: meanRate(contributors, days, versionControl((row) => row.commits)),
+    pullRequestsMerged: meanRate(
+      contributors,
+      days,
+      versionControl((row) => row.pullRequestsMerged),
+    ),
+    reviewsGiven: meanRate(contributors, days, versionControl((row) => row.reviewsGiven)),
     linesOfCode: meanRate(contributors, days, (row) =>
       row.churnUnit === "lines" ? row.linesOfCode : null,
     ),
@@ -489,6 +512,32 @@ const documentationOf = (
   );
 };
 
+/**
+ * A version-control reading, unmeasured for somebody version control never saw.
+ *
+ * Their zero commits are not a measurement, and scoring them would put a zero
+ * on the row of somebody whose work all happened in Jira. The absence is named
+ * as an unlinked account rather than folded into the generic "nothing was
+ * measured", because it is the one cause somebody can go and fix, on the
+ * Identities screen — the same wording the integrations use.
+ */
+const versionControlReading =
+  (
+    read: (
+      definition: ProductivityComponentDefinition,
+      summary: ContributorSummary,
+      reference: FleetReference,
+    ) => ScoreComponent,
+  ) =>
+  (
+    definition: ProductivityComponentDefinition,
+    summary: ContributorSummary,
+    reference: FleetReference,
+  ): ScoreComponent =>
+    measuredByVersionControl(summary)
+      ? read(definition, summary, reference)
+      : unmeasuredComponent(definition, "no version-control account is linked to this person");
+
 /** How one component is read, and what has to be configured for it to exist. */
 interface ComponentReading {
   /**
@@ -513,12 +562,13 @@ interface ComponentReading {
 const READINGS: Readonly<Record<ProductivityComponentId, ComponentReading>> = {
   commits: {
     integration: null,
-    read: (definition, summary, reference) =>
+    read: versionControlReading((definition, summary, reference) =>
       relative(definition, summary.commits, reference.commits, reference.days, "commit"),
+    ),
   },
   pullRequestsMerged: {
     integration: null,
-    read: (definition, summary, reference) =>
+    read: versionControlReading((definition, summary, reference) =>
       relative(
         definition,
         summary.pullRequestsMerged,
@@ -526,11 +576,12 @@ const READINGS: Readonly<Record<ProductivityComponentId, ComponentReading>> = {
         reference.days,
         "merged pull request",
       ),
+    ),
   },
-  churn: { integration: null, read: churnOf },
+  churn: { integration: null, read: versionControlReading(churnOf) },
   reviewsGiven: {
     integration: null,
-    read: (definition, summary, reference) =>
+    read: versionControlReading((definition, summary, reference) =>
       relative(
         definition,
         summary.reviewsGiven,
@@ -538,8 +589,9 @@ const READINGS: Readonly<Record<ProductivityComponentId, ComponentReading>> = {
         reference.days,
         "review",
       ),
+    ),
   },
-  pipelineSuccessRate: { integration: null, read: pipelineOf },
+  pipelineSuccessRate: { integration: null, read: versionControlReading(pipelineOf) },
   qualityGate: { integration: null, read: qualityGateOf },
   coverage: { integration: null, read: coverageOf },
   codingTime: { integration: "wakatime", read: codingTimeOf },

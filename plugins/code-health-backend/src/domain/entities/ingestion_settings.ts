@@ -11,6 +11,16 @@ export interface IngestionSettings {
   readonly retentionDays: number;
   /** Days fetched per backfill step. 1 walks the history a day at a time. */
   readonly backfillChunkDays: number;
+  /**
+   * Provider requests one run of the ingestion actor may issue, and one
+   * snapshot pass may spend on the repository loop — the provider snapshots
+   * and the Sonar readings taken beside them.
+   *
+   * Nothing else draws on it. Each optional integration spends its own
+   * allowance during the snapshot pass, because the enrichers used to draw
+   * from this one first and one large Confluence space could leave the loop
+   * with nothing.
+   */
   readonly requestBudgetPerRun: number;
   readonly concurrencyPerHost: number;
   readonly schedule: SchedulerServiceTaskScheduleDefinition;
@@ -58,6 +68,14 @@ export interface WakaTimeSettings {
    * ingestion already makes with its cursor.
    */
   readonly aiDaysPerRun: number;
+  /**
+   * Requests one snapshot pass may spend on WakaTime, on an allowance of its
+   * own so a large organisation never costs the pass a repository snapshot.
+   *
+   * A pass costs two requests to find the members, then one per member for the
+   * whole coding-time window and one more per member per day of AI figures.
+   */
+  readonly requestBudgetPerRun: number;
 }
 
 /**
@@ -116,6 +134,8 @@ export const DEFAULT_CONCURRENCY_PER_HOST = 4;
 export const DEFAULT_WAKATIME_BASE_URL = "https://wakatime.com/api/v1";
 export const DEFAULT_WAKATIME_HISTORY_DAYS = 30;
 export const DEFAULT_WAKATIME_AI_DAYS_PER_RUN = 3;
+/** Room for about 120 members with the AI figures on, or 500 without. */
+export const DEFAULT_WAKATIME_REQUEST_BUDGET_PER_RUN = 500;
 export const DEFAULT_ATLASSIAN_MAX_RESULTS_PER_RUN = 2000;
 export const DEFAULT_ATLASSIAN_HISTORY_DAYS = 90;
 

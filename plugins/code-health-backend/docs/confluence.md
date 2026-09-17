@@ -29,6 +29,9 @@ codeHealth:
       maxPagesPerRun: 500
       maxPagesForVolume: 150
       maxAnalyticsLookups: 200
+      # Confluence's own allowance per snapshot pass; the default is what the
+      # three caps above can need.
+      requestBudgetPerRun: 2700
 ```
 
 `baseUrl` is the *site*, not the wiki. Confluence Cloud hangs off a `/wiki` context path on the same
@@ -46,7 +49,8 @@ walks rather than merely filtering their results afterwards.
 
 An allow-list is also a statement about which spaces this plugin reads *at all*. A repository whose
 entity annotates a space outside the list is reported as untracked rather than quietly overriding the
-setting.
+setting. Whether an annotation names a listed space is decided by asking Confluence, not by comparing
+spellings, so a space renamed by an administrator is one space whichever of its keys each side uses.
 
 ### The catalog annotation
 
@@ -67,6 +71,15 @@ dashboard showing only totals.
 
 Two components may annotate the same space. The space is measured once and both rows carry the same
 figures.
+
+**A renamed space is queried by the key it was created with.** Confluence Cloud lets an administrator
+change a space's key, and the new one becomes the space's *alias*: it is what the space's URL shows,
+so it is what somebody copying a key into an annotation — or into `spaceKeys` — writes down. The
+spaces API resolves either key, but CQL matches only the original one, so every query is built from
+what the spaces API reports rather than from the annotation. Before this, a lookup indexed by the
+original key missed every alias, and each count then ran against a key CQL does not know and came
+back as a quiet quarter, with nothing said. An annotation naming a key Confluence lists no space for
+is now logged at `warn`, with the entities that carry it.
 
 ## What is measured, and how
 
@@ -244,10 +257,17 @@ Per run, roughly:
 | Page views | up to `maxAnalyticsLookups`, or exactly one on a Standard site |
 | Each space | ten, plus one per 100 changed items and one per 250 pages for the parent walk |
 
-Everything goes through the shared provider gateway, so it draws on the same per-run request budget,
-concurrency cap, retry policy and circuit breaker as version control. A run that exhausts its budget
-keeps what it collected and logs that it stopped early — a partial window is a real measurement of its
-own days.
+Everything goes through the shared provider gateway, so it shares the concurrency cap, retry policy
+and circuit breaker with version control. The request allowance is Confluence's own —
+`requestBudgetPerRun` — and nothing else in the snapshot pass draws on it. The sweep used to spend
+the repository loop's budget, before a single repository was captured, and one moderately large space
+could leave the loop with nothing; now a large space costs the pass its Confluence figures and nothing
+else. The default is derived from the caps above so the two cannot disagree: one version history for
+each of 500 pages, up to twelve bodies for each of 150 pages measured for volume, 200 analytics
+lookups, and 200 for the sweeps that find the pages and the counts behind a few spaces' reports —
+2,700. A run that exhausts its allowance keeps what it collected and logs that it stopped early — a
+partial window is a real measurement of its own days — and the snapshot pass warns, naming the
+setting.
 
 ## Verified against the API contract, not against a live site
 
