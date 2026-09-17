@@ -391,17 +391,56 @@ describe("RepositoryDetailPage", () => {
     });
 
     // then
-    expect(await screen.findByText("Coding time")).toBeInTheDocument();
+    // Twice each: once as the chart card, once as a row of the Averages card.
+    expect(await screen.findAllByText("Coding time")).toHaveLength(2);
     expect(screen.getByText("Jira delivery")).toBeInTheDocument();
     // Figures over the snapshot's own window rather than a per-bucket chart:
     // the repository-level Jira measures describe a trailing window, and a
     // chart of them beside the per-bucket cards would read as throughput.
     expect(screen.getByText("Open right now")).toBeInTheDocument();
-    expect(screen.getByText("Tickets resolved")).toBeInTheDocument();
-    expect(screen.getByText(/GW, .* — the snapshot's own trailing window/)).toBeInTheDocument();
+    expect(screen.getAllByText("Tickets resolved")).toHaveLength(2);
+    // Named by the last day it covers: the fixture's window stops at the start
+    // of the 10th, so it holds the 3rd to the 9th.
+    expect(
+      screen.getByText(/GW, Aug 3 to Aug 9 — the snapshot's own trailing window/),
+    ).toBeInTheDocument();
     expect(screen.getByText("Confluence space")).toBeInTheDocument();
     expect(screen.getByText("Gateway")).toBeInTheDocument();
     expect(screen.getByText("Pages edited")).toBeInTheDocument();
+  });
+
+  it("should write the window's activity out as rates beside the fleet's average", async () => {
+    // given
+    // What a reader asking "is this repository busy" wants before any chart,
+    // as a comparison rather than a number.
+    const summary = aBusyRepository();
+    const trendService = new StubTrendService().withRepositoryTrend(
+      aRepositoryTrend({
+        summary,
+        fleet: {
+          days: 92,
+          repositories: 8,
+          commits: summary.activity.commits / 92 / 2,
+          pullRequestsOpened: 0,
+          pullRequestsMerged: 0,
+          reviews: 0,
+          builds: 0,
+          releases: 0,
+          codingSeconds: null,
+          issuesResolved: null,
+        },
+      }),
+    );
+
+    // when
+    await renderPage({ trendService });
+
+    // then
+    expect(await screen.findByText("Averages")).toBeInTheDocument();
+    expect(screen.getByText("100% above the fleet")).toBeInTheDocument();
+    expect(
+      screen.getByText(/The fleet is the 8 active repositories tracked in this range/u),
+    ).toBeInTheDocument();
   });
 
   it("should say so rather than invent zeroes when Confluence named no space", async () => {

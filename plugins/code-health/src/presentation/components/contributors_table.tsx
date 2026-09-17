@@ -51,7 +51,7 @@ import {
   wakaTimeAiColumns,
   wakaTimeContributorColumns,
 } from "./columns/wakatime_columns";
-import { DataTable, PaginationControls } from "./data_table";
+import { DataTable, DEFAULT_PAGE_SIZE, PaginationControls } from "./data_table";
 import { EmptyCell } from "./empty_cell";
 
 interface ContributorsTableProps {
@@ -649,7 +649,7 @@ export const ContributorsTable = ({
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
-    initialState: { pagination: { pageSize: 25 } },
+    initialState: { pagination: { pageSize: DEFAULT_PAGE_SIZE } },
   });
 
   if (!isLoading && contributors.length === 0) {
@@ -676,14 +676,7 @@ export const ContributorsTable = ({
             contributors
           </Typography>
         </Box>
-        <PaginationControls
-          pageIndex={table.getState().pagination.pageIndex}
-          pageCount={table.getPageCount()}
-          canPreviousPage={table.getCanPreviousPage()}
-          canNextPage={table.getCanNextPage()}
-          onPrevious={() => table.previousPage()}
-          onNext={() => table.nextPage()}
-        />
+        <PaginationControls table={table} />
       </Box>
 
       <DataTable table={table} isLoading={isLoading} skeletonRows={5} />

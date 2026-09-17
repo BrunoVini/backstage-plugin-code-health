@@ -371,6 +371,31 @@ describe("BackstageCatalogReader.getUsersByRef", () => {
     // then
     expect(users.size).toBe(0);
   });
+
+  it("should skip an entity that is not a user", async () => {
+    // given
+    // The lookup answers for any kind the reference names, and a group dressed
+    // up as `user:default/platform` would be a record for an entity that does
+    // not exist, keyed under a person's reference.
+    const catalog = new StubCatalogService([
+      {
+        apiVersion: "backstage.io/v1alpha1",
+        kind: "Group",
+        metadata: { name: "platform", namespace: "default" },
+        spec: { type: "team", profile: { displayName: "Platform" } },
+      },
+      aUser({ name: "felipe", displayName: "Felipe Rios" }),
+    ]);
+
+    // when
+    const users = await new BackstageCatalogReader(
+      catalog.asCatalogService(),
+      stubAuth(),
+    ).getUsersByRef(["group:default/platform", "user:default/felipe"]);
+
+    // then
+    expect([...users.keys()]).toEqual(["user:default/felipe"]);
+  });
 });
 
 /** A `User` or `Group` with the relations the ownership walk follows. */

@@ -24,6 +24,18 @@ declare module "@tanstack/react-table" {
   }
 }
 
+/**
+ * The page sizes every table offers, and the one it opens with.
+ *
+ * One list for all of them, so a reader who has picked fifty rows on the
+ * repositories table finds the same fifty on offer on the contributors table
+ * next to it. Ten is there for a card that shares its page with a dozen
+ * charts, where twenty-five rows would push everything below it off screen.
+ */
+export const PAGE_SIZE_OPTIONS: readonly number[] = [10, 25, 50, 100];
+
+export const DEFAULT_PAGE_SIZE = 25;
+
 const useStyles = makeStyles((theme) => ({
   headerCell: {
     whiteSpace: "nowrap",
@@ -38,6 +50,7 @@ const useStyles = makeStyles((theme) => ({
   bodyCell: {
     whiteSpace: "nowrap",
   },
+  pageSize: { minWidth: 96 },
   skeleton: {
     height: 14,
     width: 64,
@@ -90,34 +103,63 @@ const ColumnFilter = <T,>({ column }: { column: Column<T, unknown> }) => {
   );
 };
 
-export interface PaginationControlsProps {
-  pageIndex: number;
-  pageCount: number;
-  canPreviousPage: boolean;
-  canNextPage: boolean;
-  onPrevious: () => void;
-  onNext: () => void;
+export interface PaginationControlsProps<T> {
+  readonly table: TanstackTable<T>;
 }
 
-export const PaginationControls = ({
-  pageIndex,
-  pageCount,
-  canPreviousPage,
-  canNextPage,
-  onPrevious,
-  onNext,
-}: PaginationControlsProps) => {
-  if (pageCount <= 1) return null;
+/**
+ * The page size, and the way from one page to the next.
+ *
+ * Drawn whenever the table has rows, one page or ten. The controls used to
+ * appear only past the first page, which made pagination look like something
+ * the repositories table had and the contributors table did not, on any fleet
+ * with more repositories than people — and left nobody a way to ask for a
+ * shorter page. The size lives here rather than on each table so it is one
+ * control, in one place, on every table that pages.
+ */
+export const PaginationControls = <T,>({ table }: PaginationControlsProps<T>) => {
+  const classes = useStyles();
+  const { pageIndex, pageSize } = table.getState().pagination;
+  const pageCount = Math.max(table.getPageCount(), 1);
 
   return (
-    <Box display="flex" alignItems="center" gridGap={8}>
-      <Button size="small" variant="outlined" disabled={!canPreviousPage} onClick={onPrevious}>
+    <Box display="flex" alignItems="center" flexWrap="wrap" gridGap={8}>
+      <TextField
+        select
+        size="small"
+        label="Rows per page"
+        className={classes.pageSize}
+        value={pageSize}
+        onChange={(event) => table.setPageSize(Number(event.target.value))}
+        SelectProps={{ native: true }}
+        // A native select always renders whichever option is current, so its
+        // label has to be shrunk unconditionally or it is drawn across it.
+        InputLabelProps={{ shrink: true }}
+        inputProps={{ "aria-label": "Rows per page" }}
+      >
+        {PAGE_SIZE_OPTIONS.map((size) => (
+          <option key={size} value={size}>
+            {size}
+          </option>
+        ))}
+      </TextField>
+      <Button
+        size="small"
+        variant="outlined"
+        disabled={!table.getCanPreviousPage()}
+        onClick={() => table.previousPage()}
+      >
         Previous
       </Button>
       <Typography variant="caption" color="textSecondary">
         {pageIndex + 1} / {pageCount}
       </Typography>
-      <Button size="small" variant="outlined" disabled={!canNextPage} onClick={onNext}>
+      <Button
+        size="small"
+        variant="outlined"
+        disabled={!table.getCanNextPage()}
+        onClick={() => table.nextPage()}
+      >
         Next
       </Button>
     </Box>
@@ -128,15 +170,25 @@ interface DataTableProps<T> {
   table: TanstackTable<T>;
   isLoading: boolean;
   skeletonRows?: number;
+  /** What the table is a table of, for assistive technology. */
+  label?: string;
+  /** A class for a row that has to look different from its neighbours. */
+  rowClassName?: (row: T) => string | undefined;
 }
 
-export const DataTable = <T,>({ table, isLoading, skeletonRows = 8 }: DataTableProps<T>) => {
+export const DataTable = <T,>({
+  table,
+  isLoading,
+  skeletonRows = 8,
+  label,
+  rowClassName,
+}: DataTableProps<T>) => {
   const classes = useStyles();
   const columnCount = table.getAllLeafColumns().length;
 
   return (
     <TableContainer component={Paper} variant="outlined">
-      <Table size="small">
+      <Table size="small" aria-label={label}>
         <TableHead>
           {table.getHeaderGroups().map((headerGroup) => (
             <Fragment key={headerGroup.id}>
@@ -182,7 +234,7 @@ export const DataTable = <T,>({ table, isLoading, skeletonRows = 8 }: DataTableP
                 </TableRow>
               ))
             : table.getRowModel().rows.map((row) => (
-                <TableRow key={row.id} hover>
+                <TableRow key={row.id} hover className={rowClassName?.(row.original)}>
                   {row.getVisibleCells().map((cell) => (
                     <TableCell key={cell.id} className={classes.bodyCell}>
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}

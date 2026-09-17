@@ -39,7 +39,7 @@ import { repositoryDetailRouteRef } from "../../routes";
 import { useChartPalette } from "./charts/chart_palette";
 import { BadgeStatusCell } from "./badge_status_cell";
 import { ComplianceBadge } from "./compliance_badge";
-import { DataTable, PaginationControls } from "./data_table";
+import { DataTable, DEFAULT_PAGE_SIZE, PaginationControls } from "./data_table";
 import { ApiExposureBadge } from "./api_exposure_badge";
 import { DocumentationBadge } from "./documentation_badge";
 import { confluenceRepositoryColumns } from "./columns/confluence_columns";
@@ -654,7 +654,7 @@ export const RepositoryTable = ({
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
-    initialState: { pagination: { pageSize: 25 } },
+    initialState: { pagination: { pageSize: DEFAULT_PAGE_SIZE } },
   });
 
   if (!isLoading && repositories.length === 0) {
@@ -700,14 +700,7 @@ export const RepositoryTable = ({
             }
           />
         </Box>
-        <PaginationControls
-          pageIndex={table.getState().pagination.pageIndex}
-          pageCount={table.getPageCount()}
-          canPreviousPage={table.getCanPreviousPage()}
-          canNextPage={table.getCanNextPage()}
-          onPrevious={() => table.previousPage()}
-          onNext={() => table.nextPage()}
-        />
+        <PaginationControls table={table} />
       </Box>
 
       <DataTable table={table} isLoading={isLoading} skeletonRows={8} />

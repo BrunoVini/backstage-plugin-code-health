@@ -1,8 +1,10 @@
 import type {
+  DirectoryUser,
   ExclusionReason,
   IdentityRow,
   IdentitySource,
 } from "@rios0rios0/backstage-plugin-code-health-common";
+import { searchDirectoryUsers } from "@rios0rios0/backstage-plugin-code-health-common";
 import type { IdentityService } from "../../src/domain/services/dashboard_service";
 
 /**
@@ -14,9 +16,11 @@ import type { IdentityService } from "../../src/domain/services/dashboard_servic
  */
 export class StubIdentityService implements IdentityService {
   private rows: IdentityRow[] = [];
+  private directory: DirectoryUser[] = [];
   private linkFailure: Error | null = null;
   private listFailure: Error | null = null;
   private writeFailure: Error | null = null;
+  private searchFailure: Error | null = null;
 
   readonly filters: Array<{
     sources?: readonly IdentitySource[];
@@ -24,8 +28,22 @@ export class StubIdentityService implements IdentityService {
     excluded?: boolean;
   }> = [];
 
+  /** Every query the picker asked, so a test can bound the searching. */
+  readonly searches: string[] = [];
+
   withRows(rows: readonly IdentityRow[]): this {
     this.rows = [...rows];
+    return this;
+  }
+
+  /** The catalog users a search can find. */
+  withDirectory(users: readonly DirectoryUser[]): this {
+    this.directory = [...users];
+    return this;
+  }
+
+  withSearchFailure(failure: Error): this {
+    this.searchFailure = failure;
     return this;
   }
 
@@ -60,6 +78,14 @@ export class StubIdentityService implements IdentityService {
       }
       return true;
     });
+  }
+
+  async listDirectoryUsers(query: string): Promise<DirectoryUser[]> {
+    this.searches.push(query);
+    if (this.searchFailure) throw this.searchFailure;
+    // The same matching the backend applies, so a test that types a name sees
+    // the people the real screen would.
+    return searchDirectoryUsers(this.directory, query);
   }
 
   async linkIdentity(link: {

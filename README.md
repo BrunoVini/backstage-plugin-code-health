@@ -44,12 +44,13 @@ rather than showing an empty dashboard.
 - **Detail pages**: one person's or one repository's last one to six months, bucketed by day up to forty-five days and by week beyond it, plotting the same figures the tables print and bounded by what the backfill has actually collected
 - **Two scores, never shown without their workings**: a productivity score per person and a health score per repository, each `0`–`100` and each rendered beside the components it was built from. A component nothing could measure is left out and its weight shared among the rest, never counted as a zero
 - **Output is scored as a rate against the team's average**: each total divided by the days the range spans, read against the *mean* rate across the people it could be measured on, with twice that mean scoring full marks. One person's extraordinary month no longer pushes every colleague down. The denominator is the range rather than the days somebody was active, so a rate is output per elapsed day and a mid-range start or a spell of leave lowers it
-- **Daily, weekly and monthly averages per person**, on their detail page — the score's own arithmetic written out, so a reader who disagrees with the number can see which row they disagree with
+- **Daily, weekly and monthly averages per person**, on their detail page — the score's own arithmetic written out, so a reader who disagrees with the number can see which row they disagree with — with the team's average under every figure and how far above or below it the person sits
+- **Daily, weekly and monthly averages per repository**, on its detail page: commits, pull requests, reviews, pipeline runs, releases, and the coding time and tickets of whichever integrations are configured, each beside the fleet's average
 - **Ownership**: the repositories a person is responsible for, read from the catalog's `spec.owner` and matched against their `User` entity and the groups they belong to, parent groups included — the same rule Backstage applies everywhere else
 - **Re-collecting the history**: an administrator named in configuration, and allowed by the permission framework, can send the ingestion back to the start for a chosen number of days
 - **Catalog links**: repository rows and contributors link through to their catalog entity, and a contributor matched to a `User` shows that entity's name and picture
 - **Sonar integration** through the community `sonarqube` backend plugin, so its token stays where that plugin already keeps it
-- **One row per person, not per account**: commits arrive under a commit e-mail or a login, coding time under a WakaTime username, tickets under an Atlassian account id. The **Identities** tab links them, so a contributor row adds up — and because links are applied when a row is built, correcting one fixes last March's numbers too
+- **One row per person, not per account**: commits arrive under a commit e-mail or a login, coding time under a WakaTime username, tickets under an Atlassian account id. The **Identities** tab links them, so a contributor row adds up — and because links are applied when a row is built, correcting one fixes last March's numbers too. Linking is a pick from a searchable list of catalog users, never a reference typed out by hand
 - **Not every account is a person being measured**: a build service, a bot, an outside contributor to a public repository, somebody who has left. Exclude one from the Identities tab, under one of four reasons, and it leaves every figure the plugin reports — the contributors table, both detail pages, the repository counters, the fleet cadence, and the fleet totals everybody's output is scored against. Nothing is deleted, so measuring it again restores every window already collected
 - **WakaTime integration**: coding time, active days, language and editor breakdowns, branches touched, files opened, and — where WakaTime's editor plugins report them — **AI token counts and the share of lines written by AI rather than typed**. It is the only source here that measures effort rather than output, and the only one that can see the difference between a line typed and a line accepted from a completion
 - **Jira integration**: tickets created and closed, interactions, story points estimated and finished, cycle and lead time, throughput, bug ratio, rework, and the open backlog by priority and age
@@ -58,7 +59,7 @@ rather than showing an empty dashboard.
 - **Catalog API audit**: repositories shipping an OpenAPI, AsyncAPI, GraphQL or protobuf definition that declare no `spec.providesApis`
 - **A year of history**: pick any rolling window from the last hour to the last 365 days, today so far, or any single calendar month
 - **Two platforms**: GitHub (GraphQL) and Azure DevOps (REST), per repository rather than per instance
-- **Filtering, sorting, pagination** on every column, plus archived/fork toggles
+- **Filtering, sorting, pagination** on every column of every table — repositories, contributors, identities and the repositories a person owns — with the page size picked once and offered everywhere, plus archived/fork toggles
 
 ## Installation
 
@@ -287,7 +288,18 @@ round to linking, which are exactly the rows that show the work is not finished.
 
 The screen opens on those unlinked accounts, because they are the only ones that need anything done
 to them. A switch widens it to every account, a second filter narrows it to the excluded ones, and a
-source filter narrows it to one system.
+source filter narrows it to one system. The listing is the same table the other tabs use: it sorts on
+every column, filters by account and by person, and pages.
+
+Each unlinked row offers its likely matches as one-click chips, and behind them a picker. The picker
+opens on the same likely matches, and as somebody types it searches the directory for the name, the
+address or the entity name — `rios` finds *Felipe Rios*, `j.doe` finds the address — so a link is a
+pick rather than a reference spelled out. The field still accepts a `user:<namespace>/<name>`
+reference typed or pasted whole, because that is what the backend validates against; a bare name is
+not one, and the **Link** button stays disabled until there is something linkable to send. The search
+is answered by the backend (`GET /v1/identities/users?q=`), which enumerates the directory once per
+query the way the listing already does for its suggestions, and the screen asks only once the typing
+pauses and only for two characters or more.
 
 #### Excluding an account from the measuring system
 
@@ -485,6 +497,30 @@ scores exactly the seven components at exactly the seven weights it always did. 
 is the one place that arithmetic happens, and the column heading, the score card and this table all
 read from it.
 
+#### Averages — a person, or a repository, beside the average
+
+Both detail pages carry an **Averages** card: the window's totals divided by the days it spans, per
+day, per week and per mean Gregorian month. On a person's page the rows are the ones the score
+reads — commits, pull requests opened and merged, reviews, churn in the provider's own unit,
+pipeline runs, and the coding time and resolved tickets of whichever integrations are configured.
+Under every figure sits the **team's average** in the same period, and the last column says how far
+above or below it the person sits, as a share of the team's figure: `25% above the team`,
+`40% below the team`, or `level with the team`. The team is everybody the window measured — the same
+people the score's reference is taken over, sent by the backend beside the score so the two cannot
+disagree — and each average is the mean over the people that row could be measured on, so somebody
+with no WakaTime account is not a zero in the team's coding time. An em dash on either side is a
+figure nobody measured, and a comparison against an average of nothing is an em dash too.
+
+A repository's page carries the same card for its own activity — commits, pull requests opened and
+merged, reviews, pipeline runs, releases, coding time and tickets — against the **fleet's average**,
+taken over every active repository the plugin tracks, archived ones left out because one that cannot
+receive a commit is not a peer of the ones that can. Above the fleet means busier, not better: the
+health score is the judgement, and this card is the activity. Tickets are the one row not read over
+the range picked, because a repository's Jira figures ride on the daily snapshot and describe Jira's
+own trailing window; the rate is taken over that window's days, and the row says which days those
+are. Churn is left off the repository card altogether, because a fleet mixes GitHub's lines with
+Azure DevOps's files and a mean of the two would be a mean of unlike things.
+
 #### Repository health — one repository, absolutely
 
 Every component is absolute here: a failing gate is a failing gate whatever the rest of the fleet
@@ -530,6 +566,8 @@ once.
 **Upgrading.** `RepositorySummary.ownerRef` and `RepositoryActivity.reviews` are new **required**
 fields of the wire contract. All three packages carry one version and are released together, so
 upgrade them as a set: a frontend on this version against an older backend gets rows missing both.
+The `fleet` both trend responses now carry is read as absent when an older backend leaves it out, so
+the Averages cards print the figures alone and say no average was sent rather than failing.
 
 ### What the documentation and API audits read
 

@@ -2,15 +2,22 @@ import { InfoCard, Progress, WarningPanel } from "@backstage/core-components";
 import { useRouteRef } from "@backstage/core-plugin-api";
 import Box from "@material-ui/core/Box";
 import Link from "@material-ui/core/Link";
-import Table from "@material-ui/core/Table";
-import TableBody from "@material-ui/core/TableBody";
-import TableCell from "@material-ui/core/TableCell";
-import TableContainer from "@material-ui/core/TableContainer";
-import TableHead from "@material-ui/core/TableHead";
-import TableRow from "@material-ui/core/TableRow";
 import Tooltip from "@material-ui/core/Tooltip";
 import Typography from "@material-ui/core/Typography";
 import { makeStyles } from "@material-ui/core/styles";
+import type {
+  ColumnDef,
+  ColumnFiltersState,
+  SortingFn,
+  SortingState,
+} from "@tanstack/react-table";
+import {
+  getCoreRowModel,
+  getFilteredRowModel,
+  getPaginationRowModel,
+  getSortedRowModel,
+  useReactTable,
+} from "@tanstack/react-table";
 import type {
   OwnershipInfo,
   RepositoryHealthScore,
@@ -22,10 +29,11 @@ import {
   formatScoreValue,
   scoreBand,
 } from "@rios0rios0/backstage-plugin-code-health-common";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Link as RouterLink } from "react-router-dom";
 import { repositoryDetailRouteRef, rootRouteRef } from "../../routes";
 import { ComplianceBadge } from "./compliance_badge";
+import { DataTable, PaginationControls } from "./data_table";
 import { DocumentationBadge } from "./documentation_badge";
 import { EmptyCell } from "./empty_cell";
 import { SCORE_BAND_LABELS } from "./score_card";
@@ -33,13 +41,6 @@ import { StateChip } from "./state_chip";
 import { StatusBadge } from "./status_badge";
 
 const useStyles = makeStyles((theme) => ({
-  headerCell: {
-    whiteSpace: "nowrap",
-    textTransform: "uppercase",
-    fontSize: theme.typography.pxToRem(11),
-    letterSpacing: "0.05em",
-  },
-  cell: { whiteSpace: "nowrap" },
   score: { fontWeight: 500, fontVariantNumeric: "tabular-nums" },
   owners: { display: "block", marginTop: theme.spacing(1) },
   explanation: { color: theme.palette.text.secondary },
@@ -68,30 +69,50 @@ const useBandStyles = makeStyles((theme) => ({
 }));
 
 /** A repository with its health worked out once, so sorting and rendering agree. */
-interface GradedRepository {
+export interface GradedRepository {
   readonly repository: RepositorySummary;
   readonly score: RepositoryHealthScore;
 }
 
-/**
- * Worst first, with the unmeasured after everything measured.
- *
- * Ascending because the reason to open somebody's page is to find what needs
- * attention, and a list that leads with the healthiest repository buries it.
- * A repository nothing has measured yet is not the worst one — it is a
- * different problem — so it sits after the ones that have a figure rather
- * than sorting as a zero.
- */
-export const gradeAndSort = (
+export const gradeRepositories = (
   repositories: readonly RepositorySummary[],
 ): GradedRepository[] =>
-  repositories
-    .map((repository) => ({ repository, score: computeRepositoryHealthScore(repository) }))
-    .sort((left, right) => {
-      if (left.score.value === null) return right.score.value === null ? 0 : 1;
-      if (right.score.value === null) return -1;
-      return left.score.value - right.score.value;
-    });
+  repositories.map((repository) => ({
+    repository,
+    score: computeRepositoryHealthScore(repository),
+  }));
+
+/**
+ * A card that shares its page with a dozen charts opens on ten rows rather
+ * than the tables' twenty-five, so what is below it is still on the screen.
+ */
+export const OWNED_PAGE_SIZE = 10;
+
+const HEALTH_COLUMN = "health";
+
+/**
+ * Numbers in order, with the unmeasured after every measured one — whichever
+ * way the column is sorted.
+ *
+ * A repository nothing has measured yet is not the worst one and not the best
+ * one; it is a different problem, and belongs at the end of either reading.
+ * TanStack multiplies a sorting function's answer by minus one for a
+ * descending sort, so keeping the unmeasured at the end in both directions
+ * means folding the direction into the answer here rather than letting the
+ * table flip it: an unmeasured row answers "after" when ascending and
+ * "before" when descending, which the table then flips back to "after".
+ */
+const measuredFirst =
+  <T,>(pick: (row: T) => number | null, descending: boolean): SortingFn<T> =>
+  (left, right) => {
+    const a = pick(left.original);
+    const b = pick(right.original);
+    if (a === null && b === null) return 0;
+    const toEnd = descending ? -1 : 1;
+    if (a === null) return toEnd;
+    if (b === null) return -toEnd;
+    return a - b;
+  };
 
 const HealthCell = ({ score }: { score: RepositoryHealthScore }) => {
   const classes = useStyles();
@@ -134,91 +155,208 @@ const QualityGateCell = ({ repository }: { repository: RepositorySummary }) => {
 };
 
 const MetricCell = ({ value }: { value: string | number | null }) =>
-  value === null || value === undefined ? (
-    <EmptyCell />
-  ) : (
-    <Typography variant="body2">{value}</Typography>
-  );
+  value === null ? <EmptyCell /> : <Typography variant="body2">{value}</Typography>;
 
-const HEADINGS = [
-  "Repository",
-  "Health",
-  "Quality gate",
-  "Bugs",
-  "Vulns",
-  "Coverage",
-  "Debt",
-  "CI",
-  "Compliance",
-  "Docs",
-];
-
-const OwnedTable = ({ graded }: { graded: readonly GradedRepository[] }) => {
-  const classes = useStyles();
+const RepositoryNameCell = ({ repository }: { repository: RepositorySummary }) => {
   const repositoryPath = useRouteRef(repositoryDetailRouteRef);
 
   return (
-    <TableContainer>
-      <Table size="small" aria-label="Owned repositories">
-        <TableHead>
-          <TableRow>
-            {HEADINGS.map((heading) => (
-              <TableCell key={heading} className={classes.headerCell}>
-                {heading}
-              </TableCell>
-            ))}
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {graded.map(({ repository, score }) => (
-            <TableRow key={repository.id}>
-              <TableCell className={classes.cell}>
-                <Link
-                  component={RouterLink}
-                  to={repositoryPath({ id: repository.id })}
-                  title="Open the repository's page"
-                >
-                  {repository.name}
-                </Link>
-              </TableCell>
-              <TableCell className={classes.cell}>
-                <HealthCell score={score} />
-              </TableCell>
-              <TableCell className={classes.cell}>
-                <QualityGateCell repository={repository} />
-              </TableCell>
-              <TableCell className={classes.cell}>
-                <MetricCell value={repository.sonarMetrics?.bugs ?? null} />
-              </TableCell>
-              <TableCell className={classes.cell}>
-                <MetricCell value={repository.sonarMetrics?.vulnerabilities ?? null} />
-              </TableCell>
-              <TableCell className={classes.cell}>
-                <MetricCell
-                  value={
-                    repository.sonarMetrics
-                      ? `${repository.sonarMetrics.coverage.toFixed(1)}%`
-                      : null
-                  }
-                />
-              </TableCell>
-              <TableCell className={classes.cell}>
-                <MetricCell value={repository.sonarMetrics?.technicalDebt ?? null} />
-              </TableCell>
-              <TableCell className={classes.cell}>
-                <StatusBadge state={repository.ciStatus?.state ?? null} />
-              </TableCell>
-              <TableCell className={classes.cell}>
-                <ComplianceBadge status={repository.complianceStatus} />
-              </TableCell>
-              <TableCell className={classes.cell}>
-                <DocumentationBadge status={repository.documentation} />
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </TableContainer>
+    <Link
+      component={RouterLink}
+      to={repositoryPath({ id: repository.id })}
+      title="Open the repository's page"
+    >
+      {repository.name}
+    </Link>
+  );
+};
+
+/**
+ * The columns, sorted the way the reader last asked.
+ *
+ * Every column sorts, filters where a filter means something, and the
+ * nullable ones keep their unmeasured rows at the end in both directions —
+ * which is why the sort direction of each is an input here rather than
+ * something the table applies afterwards.
+ */
+const columnsFor = (descending: (column: string) => boolean): ColumnDef<GradedRepository>[] => [
+  {
+    id: "name",
+    accessorFn: (row) => row.repository.name,
+    header: "Repository",
+    cell: ({ row }) => <RepositoryNameCell repository={row.original.repository} />,
+    filterFn: "includesString",
+  },
+  {
+    id: HEALTH_COLUMN,
+    accessorFn: (row) => row.score.value,
+    header: "Health",
+    cell: ({ row }) => <HealthCell score={row.original.score} />,
+    sortingFn: measuredFirst((row) => row.score.value, descending(HEALTH_COLUMN)),
+    // The card opens worst first, so the first click on the heading has to
+    // turn that around to best first rather than switch the sorting off — which
+    // is what the numeric default, descending first, would do from here.
+    sortDescFirst: false,
+    enableColumnFilter: false,
+  },
+  {
+    id: "qualityGate",
+    accessorFn: (row) => row.repository.sonarMetrics?.qualityGateStatus ?? "NONE",
+    header: "Quality gate",
+    cell: ({ row }) => <QualityGateCell repository={row.original.repository} />,
+    meta: { filterType: "select", options: ["", "OK", "ERROR"] },
+    filterFn: (row, _columnId, filterValue) => {
+      if (!filterValue) return true;
+      return (row.original.repository.sonarMetrics?.qualityGateStatus ?? "NONE") === filterValue;
+    },
+  },
+  {
+    id: "bugs",
+    accessorFn: (row) => row.repository.sonarMetrics?.bugs ?? null,
+    header: "Bugs",
+    cell: ({ getValue }) => <MetricCell value={getValue<number | null>()} />,
+    sortingFn: measuredFirst(
+      (row) => row.repository.sonarMetrics?.bugs ?? null,
+      descending("bugs"),
+    ),
+    enableColumnFilter: false,
+  },
+  {
+    id: "vulnerabilities",
+    accessorFn: (row) => row.repository.sonarMetrics?.vulnerabilities ?? null,
+    header: "Vulns",
+    cell: ({ getValue }) => <MetricCell value={getValue<number | null>()} />,
+    sortingFn: measuredFirst(
+      (row) => row.repository.sonarMetrics?.vulnerabilities ?? null,
+      descending("vulnerabilities"),
+    ),
+    enableColumnFilter: false,
+  },
+  {
+    id: "coverage",
+    accessorFn: (row) => row.repository.sonarMetrics?.coverage ?? null,
+    header: "Coverage",
+    cell: ({ getValue }) => {
+      const value = getValue<number | null>();
+      return <MetricCell value={value === null ? null : `${value.toFixed(1)}%`} />;
+    },
+    sortingFn: measuredFirst(
+      (row) => row.repository.sonarMetrics?.coverage ?? null,
+      descending("coverage"),
+    ),
+    enableColumnFilter: false,
+  },
+  {
+    id: "debt",
+    // Sorted on the minutes, printed as the duration Sonar phrased it.
+    accessorFn: (row) => row.repository.sonarMetrics?.technicalDebtMinutes ?? null,
+    header: "Debt",
+    cell: ({ row }) => (
+      <MetricCell value={row.original.repository.sonarMetrics?.technicalDebt ?? null} />
+    ),
+    sortingFn: measuredFirst(
+      (row) => row.repository.sonarMetrics?.technicalDebtMinutes ?? null,
+      descending("debt"),
+    ),
+    enableColumnFilter: false,
+  },
+  {
+    id: "ci",
+    accessorFn: (row) => row.repository.ciStatus?.state ?? "NONE",
+    header: "CI",
+    cell: ({ row }) => <StatusBadge state={row.original.repository.ciStatus?.state ?? null} />,
+    filterFn: (row, _columnId, filterValue) => {
+      if (!filterValue || filterValue === "all") return true;
+      const state = row.original.repository.ciStatus?.state ?? null;
+      if (filterValue === "passing") return state === "SUCCESS";
+      if (filterValue === "failing") return state !== null && state !== "SUCCESS";
+      if (filterValue === "no-ci") return state === null;
+      return true;
+    },
+    meta: { filterType: "select", options: ["all", "passing", "failing", "no-ci"] },
+  },
+  {
+    id: "compliance",
+    accessorFn: (row) => row.repository.complianceStatus?.color ?? "none",
+    header: "Compliance",
+    cell: ({ row }) => <ComplianceBadge status={row.original.repository.complianceStatus} />,
+    meta: { filterType: "select", options: ["", "green", "yellow", "red"] },
+    filterFn: (row, _columnId, filterValue) => {
+      if (!filterValue) return true;
+      return (row.original.repository.complianceStatus?.color ?? "none") === filterValue;
+    },
+  },
+  {
+    id: "documentation",
+    accessorFn: (row) => row.repository.documentation?.state ?? "unknown",
+    header: "Docs",
+    cell: ({ row }) => <DocumentationBadge status={row.original.repository.documentation} />,
+    meta: {
+      filterType: "select",
+      options: ["", "documented", "unpublished", "missing", "not-expected"],
+    },
+    filterFn: (row, _columnId, filterValue) => {
+      if (!filterValue) return true;
+      return (row.original.repository.documentation?.state ?? "unknown") === filterValue;
+    },
+  },
+];
+
+/**
+ * Worst first, with the unmeasured after everything measured.
+ *
+ * Ascending because the reason to open somebody's page is to find what needs
+ * attention, and a list that leads with the healthiest repository buries it.
+ * The reader can turn any column around; this is only where it opens.
+ */
+const INITIAL_SORTING: SortingState = [{ id: HEALTH_COLUMN, desc: false }];
+
+const OwnedTable = ({ graded }: { graded: GradedRepository[] }) => {
+  const [sorting, setSorting] = useState<SortingState>(INITIAL_SORTING);
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+
+  // Rebuilt when the sorting changes, because the nullable columns fold the
+  // direction into their comparison; the state itself lives outside them, so
+  // a rebuild costs the ten definitions and nothing the reader can see.
+  const columns = useMemo(
+    () =>
+      columnsFor(
+        (column) => sorting.find((entry) => entry.id === column)?.desc ?? false,
+      ),
+    [sorting],
+  );
+
+  const table = useReactTable({
+    data: graded,
+    columns,
+    state: { sorting, columnFilters },
+    onSortingChange: setSorting,
+    onColumnFiltersChange: setColumnFilters,
+    getRowId: (row) => row.repository.id,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    initialState: { pagination: { pageSize: OWNED_PAGE_SIZE } },
+  });
+
+  return (
+    <>
+      <Box
+        display="flex"
+        alignItems="center"
+        justifyContent="space-between"
+        flexWrap="wrap"
+        mb={1}
+        gridGap={8}
+      >
+        <Typography variant="body2" color="textSecondary">
+          {table.getFilteredRowModel().rows.length} of {graded.length} repositories
+        </Typography>
+        <PaginationControls table={table} />
+      </Box>
+      <DataTable table={table} isLoading={false} label="Owned repositories" />
+    </>
   );
 };
 
@@ -251,7 +389,7 @@ export const OwnedRepositoriesCard = ({
 }: OwnedRepositoriesCardProps) => {
   const classes = useStyles();
   const rootPath = useRouteRef(rootRouteRef);
-  const graded = useMemo(() => gradeAndSort(repositories), [repositories]);
+  const graded = useMemo(() => gradeRepositories(repositories), [repositories]);
 
   // The tab lives directly under the plugin root; the trailing slash a route ref
   // may or may not carry would otherwise double up in the middle of the path.
@@ -303,7 +441,7 @@ export const OwnedRepositoriesCard = ({
   return (
     <InfoCard
       title="Owned repositories"
-      subheader="Repositories whose catalog entity names this person, or a group they belong to, as its owner. Worst health first — this is the list to work down."
+      subheader="Repositories whose catalog entity names this person, or a group they belong to, as its owner. Worst health first — this is the list to work down — and every column sorts and filters like the tables."
     >
       <Box>{body()}</Box>
     </InfoCard>

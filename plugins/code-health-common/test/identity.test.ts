@@ -5,7 +5,9 @@ import {
   IDENTITY_SOURCES,
   identityMatchScore,
   isIdentitySource,
+  MAX_DIRECTORY_SEARCH_RESULTS,
   normalizeIdentityText,
+  searchDirectoryUsers,
   suggestIdentityMatches,
   SUGGESTION_FLOOR,
 } from "../src/identity";
@@ -273,5 +275,99 @@ describe("suggestIdentityMatches", () => {
       "user:default/a",
       "user:default/b",
     ]);
+  });
+});
+
+describe("searchDirectoryUsers", () => {
+  const directory: DirectoryUser[] = [
+    {
+      entityRef: "user:default/felipe",
+      displayName: "Felipe Rios",
+      email: "felipe.rios@example.com",
+      picture: null,
+    },
+    {
+      entityRef: "user:default/ana",
+      displayName: "Ana Costa",
+      email: "ana@example.com",
+      picture: null,
+    },
+    {
+      entityRef: "user:default/j.doe_example.com",
+      displayName: null,
+      email: "j.doe@example.com",
+      picture: null,
+    },
+    {
+      entityRef: "user:default/rios",
+      displayName: "Rios Felipe",
+      email: null,
+      picture: null,
+    },
+  ];
+
+  it("should find every user whose text contains all of the words, in any order", () => {
+    // given / when
+    const found = searchDirectoryUsers(directory, "rios fel");
+
+    // then
+    // Both match; the one whose name starts with the first word leads.
+    expect(found.map((candidate) => candidate.entityRef)).toEqual([
+      "user:default/rios",
+      "user:default/felipe",
+    ]);
+  });
+
+  it("should put the users whose name starts with the typing first", () => {
+    // given
+    // Somebody typing "rios" expects Rios Felipe under the cursor before
+    // Felipe Rios, whose surname merely contains it.
+
+    // when
+    const found = searchDirectoryUsers(directory, "rios");
+
+    // then
+    expect(found.map((candidate) => candidate.entityRef)).toEqual([
+      "user:default/rios",
+      "user:default/felipe",
+    ]);
+  });
+
+  it("should match on the address and on the entity name for a user with no display name", () => {
+    // given / when
+    const byAddress = searchDirectoryUsers(directory, "j.doe");
+    const byEntityName = searchDirectoryUsers(directory, "doe_example");
+
+    // then
+    expect(byAddress.map((candidate) => candidate.entityRef)).toEqual(["user:default/j.doe_example.com"]);
+    expect(byEntityName.map((candidate) => candidate.entityRef)).toEqual([
+      "user:default/j.doe_example.com",
+    ]);
+  });
+
+  it("should fold case and diacritics the way the suggestions do", () => {
+    // given / when
+    const found = searchDirectoryUsers(directory, "FELÍPE");
+
+    // then
+    expect(found.map((candidate) => candidate.entityRef)).toEqual([
+      "user:default/felipe",
+      "user:default/rios",
+    ]);
+  });
+
+  it("should find nobody for a query with nothing comparable in it", () => {
+    // given / when / then
+    expect(searchDirectoryUsers(directory, "")).toEqual([]);
+    expect(searchDirectoryUsers(directory, " - ")).toEqual([]);
+  });
+
+  it("should honour the limit", () => {
+    // given / when
+    const found = searchDirectoryUsers(directory, "example", 1);
+
+    // then
+    expect(found).toHaveLength(1);
+    expect(MAX_DIRECTORY_SEARCH_RESULTS).toBeGreaterThan(1);
   });
 });

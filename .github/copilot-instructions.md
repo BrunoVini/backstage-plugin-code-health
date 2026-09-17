@@ -74,6 +74,7 @@ The whole read API lives under `/api/code-health/v1`:
 
 ```
 GET  /repositories  /contributors  /timeseries  /coverage  /capabilities  /identities
+GET  /identities/users?q=         (the link picker's directory search)
 PUT  /identities/links            DELETE /identities/links/:source/:key
 PUT  /identities/exclusions       DELETE /identities/exclusions/:source/:key
 GET  /contributors/:key/trend     GET /contributors/:key/repositories
@@ -85,9 +86,9 @@ New files behind the trends, ownership and administration work:
 
 | Package | Files |
 |---|---|
-| `-common` | `score.ts`, `productivity_score.ts`, `repository_health_score.ts`, `trend.ts`, `ownership.ts`, `identity_exclusion.ts` |
-| `-backend` | `domain/commands/get_contributor_trend.ts`, `get_repository_trend.ts`, `list_owned_repositories.ts`, `reset_ingestion.ts`, `authorize_administrator.ts`, `exclude_identity.ts`; `domain/entities/permissions.ts`, `bucket.ts`, `contributor_aggregation.ts`, `repository_summary_builder.ts`; `migrations/20260910000000_owner.js`, `migrations/20260915000000_identity_exclusions.js` |
-| frontend | `presentation/pages/contributor_detail_page.tsx`, `repository_detail_page.tsx`; `components/charts/trend_chart.tsx`, `components/score_card.tsx`, `components/trend_range_picker.tsx`, `components/owned_repositories_card.tsx`, `components/ingestion_reset_button.tsx`; `components/identity_exclusion_cell.tsx`; `hooks/use_trend_window.ts`, `hooks/use_contributor_trend.ts`, `hooks/use_owned_repositories.ts`, `hooks/use_repository_trend.ts`, `hooks/use_access.ts`; `domain/entities/contributor_trend.ts`, `domain/entities/repository_trend.ts`, `domain/entities/reset_reach.ts` |
+| `-common` | `score.ts`, `productivity_score.ts`, `repository_health_score.ts`, `trend.ts`, `ownership.ts`, `identity_exclusion.ts`, `fleet_rates.ts`, `repository_rates.ts`; `searchDirectoryUsers` in `identity.ts` |
+| `-backend` | `domain/commands/get_contributor_trend.ts`, `get_repository_trend.ts`, `list_owned_repositories.ts`, `list_directory_users.ts`, `reset_ingestion.ts`, `authorize_administrator.ts`, `exclude_identity.ts`; `domain/entities/permissions.ts`, `bucket.ts`, `contributor_aggregation.ts`, `repository_summary_builder.ts`; `migrations/20260910000000_owner.js`, `migrations/20260915000000_identity_exclusions.js` |
+| frontend | `presentation/pages/contributor_detail_page.tsx`, `repository_detail_page.tsx`; `components/charts/trend_chart.tsx`, `components/score_card.tsx`, `components/trend_range_picker.tsx`, `components/owned_repositories_card.tsx`, `components/ingestion_reset_button.tsx`, `components/contributor_rates_card.tsx`, `components/repository_rates_card.tsx`, `components/rate_comparison.tsx`, `components/data_table.tsx`; `components/identity_exclusion_cell.tsx`, `components/identity_link_cell.tsx`; `hooks/use_trend_window.ts`, `hooks/use_contributor_trend.ts`, `hooks/use_owned_repositories.ts`, `hooks/use_repository_trend.ts`, `hooks/use_access.ts`, `hooks/use_directory_search.ts`; `domain/entities/contributor_trend.ts`, `domain/entities/repository_trend.ts`, `domain/entities/reset_reach.ts` |
 
 ## Things not to change without understanding why
 
@@ -140,6 +141,25 @@ New files behind the trends, ownership and administration work:
   is absolute throughout (gate 15%, coverage 15%, defects 10%, duplication 5%, debt 5%, branch build
   10%, build success 10%, policy 10%, docs 5%, review coverage 10%, PRs landed 5%). The two Sonar
   components on a person describe the repositories they changed, not the code they wrote.
+- **Every table pages through `PaginationControls`, and it is always drawn** — repositories,
+  contributors, identities and the owned-repositories card — with one shared list of page sizes.
+  Hiding it below one page is what made the contributors table look unpaginated.
+- **The link picker searches; it does not enumerate.** `useDirectorySearch` asks
+  `GET /identities/users?q=` once the typing pauses and for two characters or more; the backend's
+  `ListDirectoryUsers` enumerates the directory per query and filters it with `searchDirectoryUsers`
+  (every word, any order, name or address or entity name), answering an empty query with nobody.
+  The Link button enables only for a picked user or text that parses as a `user` reference;
+  `LinkIdentity` refuses any other kind and `getUsersByRef` skips any entity that is not a `User`.
+  The empty-search wording never claims the whole directory was searched — the read is capped.
+- **Both Averages cards compare against the `fleet` the trend response carries**, never against a
+  mean the browser computed: `contributorFleetRatesOf` is built on `fleetReferenceOf`, so the card
+  and the score say one team average, and `repositoryFleetRatesOf` runs over the repositories
+  table's own rows with archived ones left out, wired without the catalog because the mean never
+  reads an owner's name. A mean over nobody is `null` on the card, an absent `fleet` from an older
+  backend reads as `null`, and `rateDeltaOf` is `null` against zero.
+- **A window is named by the last day it covers.** `lastCoveredDayOf` in `-common` and
+  `formatWindowSpan` in the frontend end a half-open window that stops at midnight on the day
+  before, the same rule the backend's `lastDayOf` reads snapshots by.
 - **The owner column shows a name and a photograph, not a slug.** `getEntityProfiles` resolves the
   owning entity's `spec.profile` on read — any kind, since `spec.owner` is usually a `Group` — in one
   query bounded by the *distinct* owners, never one per row. `ownerProfile` is null for an owner the

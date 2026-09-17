@@ -18,6 +18,7 @@ export type {
   GetTimeSeriesResponse,
   LinkIdentityRequest,
   ListContributorsResponse,
+  ListDirectoryUsersResponse,
   ListIdentitiesResponse,
   ListOwnedRepositoriesResponse,
   ListRepositoriesResponse,
@@ -42,8 +43,10 @@ export {
   IDENTITY_SOURCES,
   identityMatchScore,
   isIdentitySource,
+  MAX_DIRECTORY_SEARCH_RESULTS,
   MAX_SUGGESTIONS,
   normalizeIdentityText,
+  searchDirectoryUsers,
   suggestIdentityMatches,
   SUGGESTION_FLOOR,
 } from "./identity";
@@ -153,6 +156,28 @@ export type {
   RatePeriodId,
 } from "./contributor_rates";
 
+export {
+  contributorFleetRatesOf,
+  describeRateDelta,
+  fleetContributorRatesOf,
+  rateDeltaDirection,
+  rateDeltaOf,
+} from "./fleet_rates";
+export type { ContributorFleetRates, RateDeltaDirection } from "./fleet_rates";
+
+export {
+  fleetRepositoryRatesOf,
+  repositoryFleetRatesOf,
+  repositoryRatesOf,
+} from "./repository_rates";
+export type {
+  RepositoryFleetRates,
+  RepositoryRates,
+  RepositoryRateSet,
+} from "./repository_rates";
+
+export { lastCoveredDayOf } from "./time_window";
+
 export { computeRate } from "./contributor_summary";
 export type { ChurnUnit, ContributorSummary } from "./contributor_summary";
 
@@ -194,6 +219,7 @@ export {
   EMPTY_FLEET_REFERENCE,
   FLEET_RATE_CEILING,
   fleetReferenceOf,
+  meanRate,
   PRODUCTIVITY_COMPONENTS,
   productivityComponentsFor,
 } from "./productivity_score";

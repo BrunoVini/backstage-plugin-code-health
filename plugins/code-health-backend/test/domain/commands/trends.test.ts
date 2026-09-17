@@ -2,6 +2,7 @@ import type { SonarMetrics } from "@rios0rios0/backstage-plugin-code-health-comm
 import { NO_INTEGRATIONS } from "@rios0rios0/backstage-plugin-code-health-common";
 import { GetContributorTrend } from "../../../src/domain/commands/get_contributor_trend";
 import { GetRepositoryTrend } from "../../../src/domain/commands/get_repository_trend";
+import { ListRepositorySummaries } from "../../../src/domain/commands/list_repository_summaries";
 import type { RepositorySnapshotPayload } from "../../../src/domain/entities/repository_snapshot";
 import type { Day } from "../../../src/domain/entities/day";
 import {
@@ -173,6 +174,40 @@ describe("GetContributorTrend", () => {
     // The only person measured is the team average, and average is half — not
     // the full marks the old top-figure reference handed out for being alone.
     expect(trend.score?.value).toBe(50);
+  });
+
+  it("should carry the team's mean rates over the whole window beside the score", async () => {
+    // given
+    // The Averages card compares each of the person's rates with the team's,
+    // and the team it means is the same people the score's reference is taken
+    // over: everybody the window measured, this person included.
+    const { store, discovered } = await seed();
+    const [repository] = discovered;
+    await ingest(store, repository.id, [
+      commit(repository.id, "2026-08-06T10:00:00.000Z", "dev@example.com"),
+      commit(repository.id, "2026-08-07T10:00:00.000Z", "dev@example.com"),
+      ...Array.from({ length: 4 }, (_unused, index) =>
+        commit(repository.id, `2026-08-07T1${index}:00:00.000Z`, "other@example.com"),
+      ),
+    ]);
+
+    // when
+    const trend = await new GetContributorTrend({ store }).run({
+      key: "vcs:dev@example.com",
+      ...WINDOW,
+      bucket: "day",
+    });
+
+    // then
+    // Two and four commits over four days: a half and one a day, so three
+    // quarters — and the same figure the score's own sentence was built from.
+    expect(trend.fleet.people).toBe(2);
+    expect(trend.fleet.days).toBe(4);
+    expect(trend.fleet.commits).toBeCloseTo(0.75, 10);
+    expect(trend.fleet.codingSeconds).toBeNull();
+    expect(
+      trend.score?.components.find((component) => component.id === "commits")?.detail,
+    ).toContain("against the team's average of");
   });
 
   it("should score each bucket against the fleet in that bucket", async () => {
@@ -671,6 +706,116 @@ describe("GetRepositoryTrend owner profiles", () => {
     // then
     expect(trend.summary.ownerRef).toBe("group:default/platform");
     expect(trend.summary.ownerProfile).toBeNull();
+  });
+});
+
+describe("GetRepositoryTrend fleet rates", () => {
+  it("should carry the fleet's mean rates when given the table's own command", async () => {
+    // given
+    // Two and four commits over the four-day window across two repositories:
+    // a half and one a day, so three quarters — the average of the rows the
+    // repositories table would show for the same window.
+    const { store, discovered } = await seed(2);
+    const [first, second] = discovered;
+    await ingest(store, first.id, [
+      commit(first.id, "2026-08-06T10:00:00.000Z", "dev@example.com"),
+      commit(first.id, "2026-08-07T10:00:00.000Z", "dev@example.com"),
+    ]);
+    await ingest(store, second.id, [
+      ...Array.from({ length: 4 }, (_unused, index) =>
+        commit(second.id, `2026-08-07T1${index}:00:00.000Z`, "other@example.com"),
+      ),
+    ]);
+
+    // when
+    const trend = await new GetRepositoryTrend(
+      store,
+      undefined,
+      new ListRepositorySummaries(store),
+    ).run({ repositoryId: first.id, ...WINDOW, bucket: "day" });
+
+    // then
+    expect(trend.fleet?.repositories).toBe(2);
+    expect(trend.fleet?.days).toBe(4);
+    expect(trend.fleet?.commits).toBeCloseTo(0.75, 10);
+    expect(trend.fleet?.codingSeconds).toBeNull();
+  });
+
+  it("should leave an archived repository out of the fleet's average", async () => {
+    // given
+    // One that cannot receive a commit is not a peer of the ones that can.
+    const { store, discovered } = await seed(2);
+    const [first, second] = discovered;
+    await ingest(store, first.id, [
+      commit(first.id, "2026-08-06T10:00:00.000Z", "dev@example.com"),
+      commit(first.id, "2026-08-07T10:00:00.000Z", "dev@example.com"),
+    ]);
+    await snapshot(store, second.id, "2026-08-05", aPayload({ isArchived: true }));
+
+    // when
+    const trend = await new GetRepositoryTrend(
+      store,
+      undefined,
+      new ListRepositorySummaries(store),
+    ).run({ repositoryId: first.id, ...WINDOW, bucket: "day" });
+
+    // then
+    expect(trend.fleet?.repositories).toBe(1);
+    expect(trend.fleet?.commits).toBeCloseTo(0.5, 10);
+  });
+
+  it("should not ask the catalog a second time for the fleet's rows", async () => {
+    // given
+    // The mean never reads an owner's name, so the fleet reader is built
+    // without the catalog: the one profile lookup is the trend's own, for the
+    // header of the page, and the fleet adds no request on top of it.
+    const { store, discovered } = await seed(2);
+    const [first, second] = discovered;
+    await store.syncRepositories({
+      discovered: discovered.map((repository) => ({
+        ...repository,
+        catalogFacts: { ...repository.catalogFacts, ownerRef: "group:default/platform" },
+      })),
+      retentionDays: 365,
+      now: NOW,
+    });
+    await ingest(store, first.id, [
+      commit(first.id, "2026-08-06T10:00:00.000Z", "dev@example.com"),
+    ]);
+    await ingest(store, second.id, [
+      commit(second.id, "2026-08-07T10:00:00.000Z", "other@example.com"),
+    ]);
+    const catalog = new StubCatalogReader().withProfiles({
+      "group:default/platform": { displayName: "Platform" },
+    });
+
+    // when
+    const trend = await new GetRepositoryTrend(
+      store,
+      catalog,
+      new ListRepositorySummaries(store),
+    ).run({ repositoryId: first.id, ...WINDOW, bucket: "day" });
+
+    // then
+    expect(trend.summary.ownerProfile?.displayName).toBe("Platform");
+    expect(trend.fleet?.repositories).toBe(2);
+    expect(catalog.profileLookups).toHaveLength(1);
+  });
+
+  it("should carry no fleet when it was given nothing to take one from", async () => {
+    // given
+    const { store, discovered } = await seed();
+    const [repository] = discovered;
+
+    // when
+    const trend = await new GetRepositoryTrend(store).run({
+      repositoryId: repository.id,
+      ...WINDOW,
+      bucket: "day",
+    });
+
+    // then
+    expect(trend.fleet).toBeNull();
   });
 });
 

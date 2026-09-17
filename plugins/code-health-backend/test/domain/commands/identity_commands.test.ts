@@ -1,6 +1,7 @@
 import {
   LinkIdentity,
   MalformedEntityRefError,
+  NotAUserReferenceError,
   UnknownIdentityError,
   UnknownUserError,
 } from "../../../src/domain/commands/link_identity";
@@ -266,6 +267,31 @@ describe("LinkIdentity", () => {
 
     // then
     await expect(linking).rejects.toThrow(MalformedEntityRefError);
+  });
+
+  it("should refuse a reference that names something other than a user", async () => {
+    // given
+    // Any kind parses, and the directory lookup would answer for a group with
+    // a user-shaped record built from its name — a link stored as
+    // `user:default/platform`, which is either nobody or the wrong person.
+    const store = await seed([{ source: "wakatime", sourceKey: "jrios" }]);
+    const directory = new StubDirectoryReader([
+      { entityRef: "user:default/platform", displayName: "Platform", email: null, picture: null },
+    ]);
+
+    // when
+    const linking = new LinkIdentity(store, directory).link({
+      source: "wakatime",
+      sourceKey: "jrios",
+      entityRef: "group:default/platform",
+      linkedBy: null,
+      now: NOW,
+    });
+
+    // then
+    await expect(linking).rejects.toThrow(NotAUserReferenceError);
+    expect(await store.listIdentityLinks()).toEqual([]);
+    expect(directory.refLookups).toEqual([]);
   });
 
   it("should refuse an account nobody has observed", async () => {

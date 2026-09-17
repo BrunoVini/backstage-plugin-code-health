@@ -19,11 +19,16 @@ import type { GetRepositoryTimeSeries } from "../../domain/commands/get_reposito
 import type { GetRepositoryTrend } from "../../domain/commands/get_repository_trend";
 import {
   MalformedEntityRefError,
+  NotAUserReferenceError,
   UnknownIdentityError,
   UnknownUserError,
   type LinkIdentity,
 } from "../../domain/commands/link_identity";
 import type { ListContributorSummaries } from "../../domain/commands/list_contributor_summaries";
+import {
+  MAX_DIRECTORY_SEARCH_HITS,
+  type ListDirectoryUsers,
+} from "../../domain/commands/list_directory_users";
 import type { ListIdentities } from "../../domain/commands/list_identities";
 import type { ListOwnedRepositories } from "../../domain/commands/list_owned_repositories";
 import type { ListRepositorySummaries } from "../../domain/commands/list_repository_summaries";
@@ -94,6 +99,18 @@ const exclusionSchema = z.object({
 });
 
 /**
+ * What a directory search asks for: the text, and how many answers at most.
+ *
+ * `q` may be empty — the screen asks for nothing while the field is empty,
+ * and the command answers with nobody rather than the whole directory. The
+ * limit is bounded so a URL cannot turn a search into a listing.
+ */
+const directorySearchSchema = z.object({
+  q: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(MAX_DIRECTORY_SEARCH_HITS).optional(),
+});
+
+/**
  * How far back a reset reaches.
  *
  * A whole number of days, at least one — the walk is keyed by day, so half a
@@ -129,7 +146,9 @@ const asHttpError = (error: unknown): unknown => {
   // A reference that cannot be parsed is a bad request; one that parses but
   // names nobody is a missing thing. Collapsing the two would tell somebody who
   // typed a bare name to go and look for a user that was never asked for.
-  if (error instanceof MalformedEntityRefError) return new InputError(error.message);
+  if (error instanceof MalformedEntityRefError || error instanceof NotAUserReferenceError) {
+    return new InputError(error.message);
+  }
   if (error instanceof UnknownIdentityError || error instanceof UnknownUserError) {
     return new NotFoundError(error.message);
   }
@@ -162,6 +181,7 @@ export interface CodeHealthRouterOptions {
   readonly repositoryTrend: GetRepositoryTrend;
   readonly owned: ListOwnedRepositories;
   readonly identities: ListIdentities;
+  readonly directoryUsers: ListDirectoryUsers;
   readonly links: LinkIdentity;
   readonly exclusions: ExcludeIdentity;
   readonly access: AuthorizeAdministrator;
@@ -207,6 +227,27 @@ export const createCodeHealthRouter = (options: CodeHealthRouterOptions): expres
         ...(sources === undefined ? {} : { sources }),
         ...(linked === undefined ? {} : { linked }),
         ...(excluded === undefined ? {} : { excluded }),
+      }),
+    });
+  });
+
+  /**
+   * The catalog users matching what somebody typed into the link field.
+   *
+   * A signed-in user, like every write on this screen: the answer is a slice
+   * of the organisation's directory, and it is asked for by the person about
+   * to make a link, never by a service.
+   */
+  router.get(`/${version}/identities/users`, async (request, response) => {
+    await options.httpAuth.credentials(request, { allow: ["user"] });
+
+    const parsed = directorySearchSchema.safeParse(request.query);
+    if (!parsed.success) throw new InputError(parsed.error.message);
+
+    response.json({
+      items: await options.directoryUsers.run({
+        query: parsed.data.q ?? "",
+        ...(parsed.data.limit === undefined ? {} : { limit: parsed.data.limit }),
       }),
     });
   });

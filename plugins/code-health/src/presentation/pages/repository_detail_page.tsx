@@ -27,6 +27,7 @@ import Typography from "@material-ui/core/Typography";
 import { useMemo } from "react";
 import { Link as RouterLink, useParams } from "react-router-dom";
 import { topContributorsByCommits } from "../../domain/entities/insights";
+import { formatWindowSpan } from "../../domain/entities/window_span";
 import {
   buildSuccessRateTrend,
   buildTrend,
@@ -52,6 +53,7 @@ import type {
 import { contributorDetailRouteRef, repositoriesRouteRef } from "../../routes";
 import { RankingChart } from "../components/charts/ranking_chart";
 import { TrendChart } from "../components/charts/trend_chart";
+import { RepositoryRatesCard } from "../components/repository_rates_card";
 import { ScoreCard } from "../components/score_card";
 import { StateChip } from "../components/state_chip";
 import { TrendRangePicker } from "../components/trend_range_picker";
@@ -197,13 +199,6 @@ const Figure = ({ label, value }: { label: string; value: number | string | null
   </Box>
 );
 
-const formatWindowDay = (instant: string): string => {
-  const parsed = new Date(instant);
-  return Number.isNaN(parsed.getTime())
-    ? instant
-    : parsed.toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" });
-};
-
 /**
  * What the matching Jira project looked like at the end of the window.
  *
@@ -230,8 +225,10 @@ const JiraFigures = ({ metrics }: { metrics: JiraRepositoryMetrics | null }) => 
     <Box>
       <Box mb={1}>
         <Typography variant="caption" color="textSecondary">
-          {`${scope}, ${formatWindowDay(metrics.window.from)} to ${formatWindowDay(
-            metrics.window.to,
+          {/* Named by the last day it covers: the window ends at the start of
+              tomorrow, which is not a day it holds. */}
+          {`${scope}, ${formatWindowSpan(
+            metrics.window,
           )} — the snapshot's own trailing window, not the range picked above`}
         </Typography>
       </Box>
@@ -435,6 +432,19 @@ export const RepositoryDetailPage = ({
                 </Typography>
               )}
             </InfoCard>
+          </Grid>
+
+          {/* Directly under the score and the people, because it is the
+              window's activity written out as rates: what a reader asking "is
+              this repository busy" wants before any chart, beside the fleet's
+              average so the answer is a comparison rather than a number. */}
+          <Grid item xs={12}>
+            <RepositoryRatesCard
+              summary={trend.summary}
+              window={range.window}
+              capabilities={capabilities}
+              fleet={trend.fleet}
+            />
           </Grid>
 
           <Grid item xs={12}>

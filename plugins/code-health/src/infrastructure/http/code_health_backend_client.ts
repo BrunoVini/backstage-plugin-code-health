@@ -2,6 +2,7 @@ import type { DiscoveryApi, FetchApi } from "@backstage/core-plugin-api";
 import type {
   ContributorSummary,
   CoverageInfo,
+  DirectoryUser,
   ExclusionReason,
   GetAccessResponse,
   GetCapabilitiesResponse,
@@ -12,6 +13,7 @@ import type {
   IdentitySource,
   IntegrationCapabilities,
   ListContributorsResponse,
+  ListDirectoryUsersResponse,
   ListIdentitiesResponse,
   ListOwnedRepositoriesResponse,
   ListRepositoriesResponse,
@@ -129,6 +131,11 @@ export class CodeHealthBackendClient
     return [...body.items];
   }
 
+  async listDirectoryUsers(query: string): Promise<DirectoryUser[]> {
+    const body = await this.get<ListDirectoryUsersResponse>("identities/users", { q: query });
+    return [...body.items];
+  }
+
   async linkIdentity(link: {
     source: IdentitySource;
     sourceKey: string;
@@ -180,10 +187,14 @@ export class CodeHealthBackendClient
   ): Promise<GetContributorTrendResponse> {
     // A person key carries a colon and, for a linked person, a slash, so it is
     // encoded as one path segment rather than spliced in verbatim.
-    return this.get<GetContributorTrendResponse>(
+    const body = await this.get<GetContributorTrendResponse>(
       `contributors/${encodeURIComponent(key)}/trend`,
       { from: window.from, to: window.to, bucket },
     );
+    // A backend that predates the fleet rates sends nothing under the key, and
+    // the card reads an absent fleet as "nothing to compare against" rather
+    // than as a page that fails to render.
+    return { ...body, fleet: body.fleet ?? null };
   }
 
   async getRepositoryTrend(
@@ -191,10 +202,11 @@ export class CodeHealthBackendClient
     window: TimeWindow,
     bucket: TimeSeriesBucket,
   ): Promise<GetRepositoryTrendResponse> {
-    return this.get<GetRepositoryTrendResponse>(
+    const body = await this.get<GetRepositoryTrendResponse>(
       `repositories/${encodeURIComponent(id)}/trend`,
       { from: window.from, to: window.to, bucket },
     );
+    return { ...body, fleet: body.fleet ?? null };
   }
 
   async listOwnedRepositories(

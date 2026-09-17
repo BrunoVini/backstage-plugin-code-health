@@ -1,3 +1,4 @@
+import { parseEntityRef } from "./entity_ref";
 import type { ExclusionReason } from "./identity_exclusion";
 
 /**
@@ -264,3 +265,57 @@ export const suggestIdentityMatches = (
         ),
     )
     .slice(0, limit);
+
+/** How many directory users a search answers with. Beyond a screenful nobody reads them. */
+export const MAX_DIRECTORY_SEARCH_RESULTS = 20;
+
+/** Everything about a user a search can match on, folded to comparable text. */
+const searchableTextOf = (user: DirectoryUser): string =>
+  normalizeIdentityText(
+    [
+      user.displayName ?? "",
+      user.email ?? "",
+      parseEntityRef(user.entityRef)?.name ?? user.entityRef,
+    ].join(" "),
+  );
+
+/**
+ * The catalog users whose name, address or entity name contains every word of
+ * `query`, best match first.
+ *
+ * A "like" search rather than a ranked resemblance. {@link suggestIdentityMatches}
+ * is for an account the plugin has an opinion about; this is for the person at
+ * the keyboard who already knows who the account belongs to and should not
+ * have to type `user:default/j.doe_example.com` to say so. Every word has to
+ * appear somewhere, in any order, so `rios fel` finds Felipe Rios and
+ * `j.doe` finds the address; a query with nothing comparable in it finds
+ * nobody rather than everybody.
+ *
+ * Users whose name starts with what was typed come first, because that is
+ * what somebody typing a name expects to see under the cursor; ties break on
+ * the name so the list is stable between keystrokes.
+ */
+export const searchDirectoryUsers = (
+  users: readonly DirectoryUser[],
+  query: string,
+  limit: number = MAX_DIRECTORY_SEARCH_RESULTS,
+): DirectoryUser[] => {
+  const terms = tokensOf(query);
+  if (terms.length === 0) return [];
+  const [first] = terms;
+  const nameOf = (user: DirectoryUser): string => user.displayName ?? user.entityRef;
+
+  return users
+    .flatMap((user) => {
+      const text = searchableTextOf(user);
+      if (!terms.every((term) => text.includes(term))) return [];
+      const leading = first !== undefined && normalizeIdentityText(nameOf(user)).startsWith(first);
+      return [{ user, rank: leading ? 0 : 1 }];
+    })
+    .sort(
+      (left, right) =>
+        left.rank - right.rank || nameOf(left.user).localeCompare(nameOf(right.user)),
+    )
+    .slice(0, Math.max(0, limit))
+    .map(({ user }) => user);
+};

@@ -75,8 +75,9 @@ Hexagonal: `domain/` holds entities, commands and ports; `infrastructure/` holds
 | `src/domain/entities/person_directory.ts` | Which person an account belongs to and whether that person is measured, built per request from the link and exclusion tables; `loadPersonDirectory`, `measuredEvents` and `measuredContributorMetrics` are the one way every read applies both |
 | `src/domain/commands/reconcile_identities.ts` | The one automatic link: an account whose e-mail matches a catalog `User` |
 | `src/domain/commands/link_identity.ts` / `list_identities.ts` | The Identities screen's read and its two linking writes |
+| `src/domain/commands/list_directory_users.ts` | The "like" search behind the link picker: the directory enumerated once per query and filtered by name, address and entity name |
 | `src/domain/commands/exclude_identity.ts` | The Identities screen's other two writes: taking an account out of every measurement under a named reason, and putting it back |
-| `src/domain/commands/get_contributor_trend.ts` / `get_repository_trend.ts` | One person's and one repository's history, bucketed, each bucket carrying the summary and the score it earns |
+| `src/domain/commands/get_contributor_trend.ts` / `get_repository_trend.ts` | One person's and one repository's history, bucketed, each bucket carrying the summary and the score it earns; each also carries the `fleet` mean rates the Averages card compares against |
 | `src/domain/commands/list_owned_repositories.ts` | The repositories a person owns, through `spec.owner` and their group ancestry |
 | `src/domain/commands/reset_ingestion.ts` | Sends every tracked repository's cursors back over the reach asked for and drops what the walk re-collects |
 | `src/domain/commands/authorize_administrator.ts` | The two gates a reset passes: named in `codeHealth.administrators`, *and* allowed by the permission framework |
@@ -101,6 +102,9 @@ Hexagonal: `domain/` holds entities, commands and ports; `infrastructure/` holds
 | `src/plugin.ts` / `src/alpha.tsx` | Legacy and declarative entry points |
 | `src/main/apis.ts` / `src/main/api_refs.ts` | `createApiFactory` wiring; one stateless client behind nine data refs (repositories, contributors, coverage, time series, integrations, identities, trends, ownership, administration), plus a separate config ref |
 | `src/presentation/hooks/use_identities.ts` | The Identities screen's read and its four writes, each of which reloads the listing rather than patching a row |
+| `src/presentation/hooks/use_directory_search.ts` | The link picker's search: asked once the typing pauses, for two characters or more, with a stale reply never landing on a later query |
+| `src/presentation/components/identity_link_cell.tsx` | The likely-match chips and the searching picker behind them; the Link button enables only for a picked user or text that parses as a reference |
+| `src/presentation/components/data_table.tsx` | The one table every listing renders through: sorting, a filter row, and `PaginationControls` with the page size every table shares |
 | `src/infrastructure/http/code_health_backend_client.ts` | The only thing the browser talks to |
 | `src/main/router.tsx` | Page composition, the backend-reachability gate and the capabilities probe; Insights is the root tab |
 | `src/presentation/pages/identities_page.tsx` | Attaching an account to a catalog `User`, and deciding whether it is measured at all — the plugin's only writes |
@@ -109,7 +113,9 @@ Hexagonal: `domain/` holds entities, commands and ports; `infrastructure/` holds
 | `src/presentation/components/insights/` | Three card sets per integration — fleet, people, repositories — each gated on its flag; `detail_links.ts` is the one place a ranked row's link to a detail page is built |
 | `src/domain/entities/time_range.ts` | Which windows are offered, bounded by coverage — rolling ranges and calendar months |
 | `src/domain/entities/trend_range.ts` | The same two shapes for a detail page, resolving a month through the tables' own `toWindow` so one month cannot mean two windows |
-| `src/presentation/components/contributor_rates_card.tsx` | What one person does in a day, a week and a month — the score's own arithmetic written out |
+| `src/presentation/components/contributor_rates_card.tsx` | What one person does in a day, a week and a month — the score's own arithmetic written out — with the team's average under every figure and how far from it the person sits |
+| `src/presentation/components/repository_rates_card.tsx` | The same card for a repository's activity, against the fleet's average over its active repositories |
+| `src/presentation/components/rate_comparison.tsx` | A figure with its average underneath, and the delta said in words; shared by both averages cards |
 | `src/presentation/components/range_picker.tsx` | One control for both, so the two can never disagree; every offered month is in the list by name |
 | `src/presentation/hooks/range_selection_context.tsx` | The one selection the tabs share, so a month picked on one is still the month on the next |
 | `src/presentation/components/backfill_progress.tsx` | Why wider ranges are not available yet |
@@ -121,7 +127,7 @@ Hexagonal: `domain/` holds entities, commands and ports; `infrastructure/` holds
 | `src/presentation/hooks/use_trend_window.ts` | The months picked, turned into a window and the bucket `trendBucketFor` implies |
 | `src/domain/entities/contributor_trend.ts` | Turns a person's trend points into chart series, with null where a bucket measured nothing and zero where it measured nothing happening |
 | `src/presentation/hooks/use_contributor_trend.ts` / `use_owned_repositories.ts` | The contributor page's two reads |
-| `src/presentation/components/owned_repositories_card.tsx` | The repositories a person owns, worst health first, and what to do when they own none |
+| `src/presentation/components/owned_repositories_card.tsx` | The repositories a person owns, worst health first, sortable and filterable on every column and paged ten at a time; and what to do when they own none |
 | `src/domain/entities/repository_trend.ts` / `src/presentation/hooks/use_repository_trend.ts` | The repository page's series and its one read; a backend 404 reads as "not tracked" rather than as a failure |
 | `src/presentation/components/ingestion_reset_button.tsx` | The administrator's reset — the access probe, the reach and the confirmation |
 | `src/presentation/hooks/use_access.ts` | `/v1/access`, asked once; unreachable reads as "not an administrator" rather than as an error panel |
@@ -137,10 +143,13 @@ The wire contract, and the pure functions both sides have to agree on.
 | `src/score.ts` | What a score is — a value, the evidence behind it, the components it was folded from — and `combineScore`, which redistributes the weight of anything unmeasured |
 | `src/productivity_score.ts` | The per-person components and their nominal weights, which integration each needs, the renormalisation over the configured set, and the fleet's **mean daily rate** the relative ones are read against |
 | `src/contributor_rates.ts` | A window total turned into a daily, weekly and monthly rate, and the wording every rate is said in |
+| `src/fleet_rates.ts` | The team's mean daily rate for every row of the person's Averages card, built on `fleetReferenceOf` so the card and the score say one average; and `rateDeltaOf`, how far a rate sits from it |
+| `src/repository_rates.ts` | A repository's activity as rates, and the fleet's mean over its active repositories |
 | `src/repository_health_score.ts` | The per-repository components, weights and decay constants |
 | `src/trend.ts` | The bucketed point shapes, `TREND_MONTHS`, and `trendBucketFor` — day up to 45 days, week beyond |
 | `src/ownership.ts` | `OwnershipInfo`, and `ownerEntityRef`, which normalises `spec.owner` exactly as the catalog does |
 | `src/identity_exclusion.ts` | The four reasons an account is not a person being measured, with the wording the menu and the chip are built from |
+| `src/identity.ts` | Besides the suggestion ranking, `searchDirectoryUsers` — the "like" search the link picker and the backend share, every word matched in any order |
 
 ## Decisions worth not re-litigating
 
@@ -254,6 +263,55 @@ The wire contract, and the pure functions both sides have to agree on.
   Excluded rows are still listed, dimmed: they are the one kind of row that appears nowhere else in
   the plugin, so hiding them here would leave a build service taken out of the figures with nothing
   anywhere able to say it had been, and no way to put it back.
+- **Every table pages through one control, and the control is always drawn.** `PaginationControls`
+  takes the TanStack table and renders the page size, the page and the two arrows on the
+  repositories, contributors and identities tables and on the owned-repositories card. It used to
+  appear only past the first page, which on any fleet with more repositories than people read as
+  "the repositories table paginates and the contributors table does not", and left nobody a way to
+  ask for a shorter page. The sizes are one list, `PAGE_SIZE_OPTIONS`, so a size picked on one table
+  is on offer on the next; the card opens on ten rather than twenty-five because it shares its page
+  with a dozen charts.
+- **The link picker searches the directory; it never enumerates it into the browser.** The field on
+  an unlinked Identities row is an Autocomplete over the row's likely matches plus whatever
+  `GET /v1/identities/users?q=` returns for the text typed, asked through `useDirectorySearch` only
+  once the typing pauses and only for two characters or more. The backend enumerates the directory
+  once per query and filters it with `searchDirectoryUsers` — the catalog's filter API matches whole
+  values, not substrings, and the listing already enumerates the directory for its suggestions on
+  the same screen — and the route answers an empty query with nobody rather than the first page of
+  everybody. The Link button enables only for a picked user or text that parses as a **user**
+  reference: a bare name sent to the backend comes back as a refusal the reader cannot act on, and
+  a pasted `group:default/platform` parses but names nobody a link can attach to — `LinkIdentity`
+  refuses any kind but `user`, and `getUsersByRef` skips any entity that is not a `User` rather
+  than dressing a group up as one. The empty-search wording says "no match found" and offers the
+  pasted reference, never "nobody in the directory matches": the read behind it is capped at
+  `MAX_DIRECTORY_USERS`, so on a very large tenant a person can exist and not be returned. A sort or a filter
+  on the identities table resets the page asynchronously (TanStack queues it), so a test that sorts
+  and then counts rows has to wait.
+- **A numeric column opens on its highest figure, and the unmeasured sit after the measured either
+  way.** On the owned-repositories card every nullable column carries `measuredFirst`, a sorting
+  function that folds the direction in — TanStack multiplies a sorting function's answer by minus one
+  for a descending sort, so "after" has to be said as "before" there. The health column alone sets
+  `sortDescFirst: false`: the card opens worst first, and the first click on the heading has to turn
+  that around rather than switch the sorting off, which is what the numeric default would do from an
+  ascending start.
+- **The Averages cards compare against the average the backend sent, never one the browser worked
+  out.** `GetContributorTrendResponse.fleet` is `contributorFleetRatesOf(windowRows, days)`, built on
+  the very `fleetReferenceOf` the headline score reads, so the team column on the card and the
+  sentence behind a score component are one figure printed twice; the two rows the score never
+  reads, pull requests opened and pipeline runs, are the only means computed there. A mean taken
+  over nobody is `null` on the card where the score's reference folds it to zero, because the card
+  has to tell "nobody has WakaTime linked" from "the team never opens an editor".
+  `GetRepositoryTrendResponse.fleet` is `repositoryFleetRatesOf` over `ListRepositorySummaries.run`
+  for the same window — the table's own rows, archived ones left out — and is `null` when the
+  command was built without that reader. The plugin wires that reader **without the catalog**:
+  the mean never reads an owner's name, and resolving every distinct owner's profile would be
+  the one part of the tab's read a detail page does not already pay for. The rest is the same
+  database read the repositories tab performs on every load, and a per-window cache was rejected
+  because every read here serves from the database so that a link or an exclusion shows on the
+  next request. The client reads an absent `fleet` from an older backend as
+  `null`, and both cards then print the figures alone and say no average was sent. The delta is
+  `rateDeltaOf`: a signed share of the average, `null` against zero or nothing, and said in words —
+  "25% above the team" — so no reader has to remember which way a minus sign points.
 - **A native `select` with a label needs `InputLabelProps={{ shrink: true }}`.** It always renders
   whichever option is current, so Material UI reading its empty value as an empty field draws the
   label straight across the option text — which is what put "Source" on top of "All sources" on the

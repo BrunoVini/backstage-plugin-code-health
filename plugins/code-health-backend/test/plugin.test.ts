@@ -26,6 +26,14 @@ const componentWithSlug = (name: string, slug: string): Entity => ({
   spec: { type: "service", owner: "team-a" },
 });
 
+/** A catalog user with the profile the directory search reads. */
+const aUser = (name: string, displayName: string, email: string): Entity => ({
+  apiVersion: "backstage.io/v1alpha1",
+  kind: "User",
+  metadata: { name, namespace: "default" },
+  spec: { profile: { displayName, email }, memberOf: [] },
+});
+
 const started: Array<{ stop(): Promise<void> }> = [];
 
 afterEach(async () => {
@@ -488,6 +496,71 @@ describe("codeHealthPlugin", () => {
       });
     });
 
+    it("should find catalog users by part of their name", async () => {
+      // given
+      // The other half of a link, found by typing part of a name rather than
+      // the whole entity reference.
+      const { server } = await startBackend([
+        aUser("jane", "Jane Roe", "jane@acme.com"),
+        aUser("john", "John Roe", "john@acme.com"),
+        aUser("ana", "Ana Costa", "ana@acme.com"),
+      ]);
+
+      // when
+      const response = await request(server)
+        .get("/api/code-health/v1/identities/users")
+        .query({ q: "roe" });
+
+      // then
+      expect(response.status).toBe(200);
+      expect(response.body.items).toEqual([
+        {
+          entityRef: "user:default/jane",
+          displayName: "Jane Roe",
+          email: "jane@acme.com",
+          picture: null,
+        },
+        {
+          entityRef: "user:default/john",
+          displayName: "John Roe",
+          email: "john@acme.com",
+          picture: null,
+        },
+      ]);
+    });
+
+    it("should answer an empty search with nobody", async () => {
+      // given
+      const { server } = await startBackend([aUser("jane", "Jane Roe", "jane@acme.com")]);
+
+      // when
+      const response = await request(server).get("/api/code-health/v1/identities/users");
+
+      // then
+      expect(response.status).toBe(200);
+      expect(response.body.items).toEqual([]);
+    });
+
+    it("should honour a search limit and reject one it cannot", async () => {
+      // given
+      const { server } = await startBackend([
+        aUser("jane", "Jane Roe", "jane@acme.com"),
+        aUser("john", "John Roe", "john@acme.com"),
+      ]);
+
+      // when
+      const limited = await request(server)
+        .get("/api/code-health/v1/identities/users")
+        .query({ q: "roe", limit: 1 });
+      const refused = await request(server)
+        .get("/api/code-health/v1/identities/users")
+        .query({ q: "roe", limit: 0 });
+
+      // then
+      expect(limited.body.items).toHaveLength(1);
+      expect(refused.status).toBe(400);
+    });
+
     it("should list no identities before anything has been observed", async () => {
       // given
       const { server } = await startBackend([]);
@@ -553,6 +626,21 @@ describe("codeHealthPlugin", () => {
 
       // then
       expect(response.status).toBe(400);
+    });
+
+    it("should reject a reference that names something other than a user", async () => {
+      // given
+      // A group parses as a reference; it is still nobody a link can attach to.
+      const { server } = await startBackend([]);
+
+      // when
+      const response = await request(server)
+        .put("/api/code-health/v1/identities/links")
+        .send({ source: "wakatime", sourceKey: "jrios", entityRef: "group:default/platform" });
+
+      // then
+      expect(response.status).toBe(400);
+      expect(response.body.error.message).toContain("names a group");
     });
 
     it("should reject a reference that is not one at all", async () => {
