@@ -764,6 +764,44 @@ describe("GetRepositoryTrend fleet rates", () => {
     expect(trend.fleet?.commits).toBeCloseTo(0.5, 10);
   });
 
+  it("should not ask the catalog a second time for the fleet's rows", async () => {
+    // given
+    // The mean never reads an owner's name, so the fleet reader is built
+    // without the catalog: the one profile lookup is the trend's own, for the
+    // header of the page, and the fleet adds no request on top of it.
+    const { store, discovered } = await seed(2);
+    const [first, second] = discovered;
+    await store.syncRepositories({
+      discovered: discovered.map((repository) => ({
+        ...repository,
+        catalogFacts: { ...repository.catalogFacts, ownerRef: "group:default/platform" },
+      })),
+      retentionDays: 365,
+      now: NOW,
+    });
+    await ingest(store, first.id, [
+      commit(first.id, "2026-08-06T10:00:00.000Z", "dev@example.com"),
+    ]);
+    await ingest(store, second.id, [
+      commit(second.id, "2026-08-07T10:00:00.000Z", "other@example.com"),
+    ]);
+    const catalog = new StubCatalogReader().withProfiles({
+      "group:default/platform": { displayName: "Platform" },
+    });
+
+    // when
+    const trend = await new GetRepositoryTrend(
+      store,
+      catalog,
+      new ListRepositorySummaries(store),
+    ).run({ repositoryId: first.id, ...WINDOW, bucket: "day" });
+
+    // then
+    expect(trend.summary.ownerProfile?.displayName).toBe("Platform");
+    expect(trend.fleet?.repositories).toBe(2);
+    expect(catalog.profileLookups).toHaveLength(1);
+  });
+
   it("should carry no fleet when it was given nothing to take one from", async () => {
     // given
     const { store, discovered } = await seed();

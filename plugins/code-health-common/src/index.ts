@@ -176,6 +176,8 @@ export type {
   RepositoryRateSet,
 } from "./repository_rates";
 
+export { lastCoveredDayOf } from "./time_window";
+
 export { computeRate } from "./contributor_summary";
 export type { ChurnUnit, ContributorSummary } from "./contributor_summary";
 

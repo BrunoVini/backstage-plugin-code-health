@@ -19,13 +19,14 @@ import type { GetRepositoryTimeSeries } from "../../domain/commands/get_reposito
 import type { GetRepositoryTrend } from "../../domain/commands/get_repository_trend";
 import {
   MalformedEntityRefError,
+  NotAUserReferenceError,
   UnknownIdentityError,
   UnknownUserError,
   type LinkIdentity,
 } from "../../domain/commands/link_identity";
 import type { ListContributorSummaries } from "../../domain/commands/list_contributor_summaries";
 import {
-  MAX_DIRECTORY_USERS_LIMIT,
+  MAX_DIRECTORY_SEARCH_HITS,
   type ListDirectoryUsers,
 } from "../../domain/commands/list_directory_users";
 import type { ListIdentities } from "../../domain/commands/list_identities";
@@ -106,7 +107,7 @@ const exclusionSchema = z.object({
  */
 const directorySearchSchema = z.object({
   q: z.string().optional(),
-  limit: z.coerce.number().int().min(1).max(MAX_DIRECTORY_USERS_LIMIT).optional(),
+  limit: z.coerce.number().int().min(1).max(MAX_DIRECTORY_SEARCH_HITS).optional(),
 });
 
 /**
@@ -145,7 +146,9 @@ const asHttpError = (error: unknown): unknown => {
   // A reference that cannot be parsed is a bad request; one that parses but
   // names nobody is a missing thing. Collapsing the two would tell somebody who
   // typed a bare name to go and look for a user that was never asked for.
-  if (error instanceof MalformedEntityRefError) return new InputError(error.message);
+  if (error instanceof MalformedEntityRefError || error instanceof NotAUserReferenceError) {
+    return new InputError(error.message);
+  }
   if (error instanceof UnknownIdentityError || error instanceof UnknownUserError) {
     return new NotFoundError(error.message);
   }

@@ -399,7 +399,11 @@ describe("RepositoryDetailPage", () => {
     // chart of them beside the per-bucket cards would read as throughput.
     expect(screen.getByText("Open right now")).toBeInTheDocument();
     expect(screen.getAllByText("Tickets resolved")).toHaveLength(2);
-    expect(screen.getByText(/GW, .* — the snapshot's own trailing window/)).toBeInTheDocument();
+    // Named by the last day it covers: the fixture's window stops at the start
+    // of the 10th, so it holds the 3rd to the 9th.
+    expect(
+      screen.getByText(/GW, Aug 3 to Aug 9 — the snapshot's own trailing window/),
+    ).toBeInTheDocument();
     expect(screen.getByText("Confluence space")).toBeInTheDocument();
     expect(screen.getByText("Gateway")).toBeInTheDocument();
     expect(screen.getByText("Pages edited")).toBeInTheDocument();

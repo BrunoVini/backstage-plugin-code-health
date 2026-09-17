@@ -171,8 +171,10 @@ describe("RepositoryRatesCard", () => {
     // then
     expect(figuresOn("Tickets resolved")).toEqual(["1", "7", "30.4"]);
     expect(comparisonOn("Tickets resolved")).toBe("100% above the fleet");
+    // The window ends at the start of the 31st, which it never holds: twenty
+    // days, the 11th to the 30th.
     expect(
-      screen.getByText(/Tickets resolved is a rate over Jira's own trailing window, Aug 11 to Aug 31/u),
+      screen.getByText(/Tickets resolved is a rate over Jira's own trailing window, Aug 11 to Aug 30/u),
     ).toBeInTheDocument();
   });
 

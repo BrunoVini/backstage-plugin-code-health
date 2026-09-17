@@ -1,6 +1,6 @@
 import {
   ListDirectoryUsers,
-  MAX_DIRECTORY_USERS_LIMIT,
+  MAX_DIRECTORY_SEARCH_HITS,
 } from "../../../src/domain/commands/list_directory_users";
 import { StubDirectoryReader } from "../../doubles/stub_directory_reader";
 
@@ -61,7 +61,7 @@ describe("ListDirectoryUsers", () => {
 
     // when
     const one = await command.run({ query: "example", limit: 1 });
-    const bounded = await command.run({ query: "example", limit: MAX_DIRECTORY_USERS_LIMIT * 10 });
+    const bounded = await command.run({ query: "example", limit: MAX_DIRECTORY_SEARCH_HITS * 10 });
     const floored = await command.run({ query: "example", limit: 0 });
 
     // then

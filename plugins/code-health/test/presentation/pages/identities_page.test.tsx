@@ -215,6 +215,27 @@ describe("IdentitiesPage", () => {
     expect(screen.getByText("Link").closest("button")).toBeDisabled();
   });
 
+  it("should refuse to send a reference that names something other than a user", async () => {
+    // given
+    // Any kind parses, and the backend would look a group up and link whatever
+    // it found under the name — so a pasted group reference is not linkable.
+    const service = new StubIdentityService().withRows([unlinked]).withDirectory(directory);
+    renderPage(service);
+    await waitFor(() => expect(screen.getByText("Felipe Rios")).toBeInTheDocument());
+
+    // when
+    fireEvent.change(pickerFor("jrios"), { target: { value: "group:default/platform" } });
+
+    // then
+    expect(screen.getByText("Link").closest("button")).toBeDisabled();
+
+    // when
+    fireEvent.change(pickerFor("jrios"), { target: { value: "user:default/platform" } });
+
+    // then
+    expect(screen.getByText("Link").closest("button")).toBeEnabled();
+  });
+
   it("should say when nobody in the directory matches", async () => {
     // given
     const service = new StubIdentityService().withRows([unlinked]).withDirectory(directory);
@@ -225,9 +246,10 @@ describe("IdentitiesPage", () => {
     fireEvent.change(pickerFor("jrios"), { target: { value: "zzzz" } });
 
     // then
-    expect(
-      await screen.findByText("Nobody in the directory matches that."),
-    ).toBeInTheDocument();
+    // Never "nobody in the directory matches": the search runs over a capped
+    // read of the directory, and the pasted reference is the remedy.
+    expect(await screen.findByText(/^No match found\./u)).toBeInTheDocument();
+    expect(screen.getByText(/pasted here still links/u)).toBeInTheDocument();
   });
 
   it("should say plainly when the directory could not be searched", async () => {

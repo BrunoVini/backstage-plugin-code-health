@@ -148,12 +148,18 @@ New files behind the trends, ownership and administration work:
   `GET /identities/users?q=` once the typing pauses and for two characters or more; the backend's
   `ListDirectoryUsers` enumerates the directory per query and filters it with `searchDirectoryUsers`
   (every word, any order, name or address or entity name), answering an empty query with nobody.
-  The Link button enables only for a picked user or text that parses as a reference.
+  The Link button enables only for a picked user or text that parses as a `user` reference;
+  `LinkIdentity` refuses any other kind and `getUsersByRef` skips any entity that is not a `User`.
+  The empty-search wording never claims the whole directory was searched — the read is capped.
 - **Both Averages cards compare against the `fleet` the trend response carries**, never against a
   mean the browser computed: `contributorFleetRatesOf` is built on `fleetReferenceOf`, so the card
   and the score say one team average, and `repositoryFleetRatesOf` runs over the repositories
-  table's own rows with archived ones left out. A mean over nobody is `null` on the card, an absent
-  `fleet` from an older backend reads as `null`, and `rateDeltaOf` is `null` against zero.
+  table's own rows with archived ones left out, wired without the catalog because the mean never
+  reads an owner's name. A mean over nobody is `null` on the card, an absent `fleet` from an older
+  backend reads as `null`, and `rateDeltaOf` is `null` against zero.
+- **A window is named by the last day it covers.** `lastCoveredDayOf` in `-common` and
+  `formatWindowSpan` in the frontend end a half-open window that stops at midnight on the day
+  before, the same rule the backend's `lastDayOf` reads snapshots by.
 - **The owner column shows a name and a photograph, not a slug.** `getEntityProfiles` resolves the
   owning entity's `spec.profile` on read — any kind, since `spec.owner` is usually a `Group` — in one
   query bounded by the *distinct* owners, never one per row. `ownerProfile` is null for an owner the

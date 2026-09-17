@@ -134,8 +134,16 @@ export const codeHealthPlugin = createBackendPlugin({
               capabilities,
             }),
             // Given the table's own command, so the fleet average a repository's
-            // page compares against is the average of the rows the table shows.
-            repositoryTrend: new GetRepositoryTrend(store, catalogReader, repositories),
+            // page compares against is the average of the rows the table shows —
+            // but built without the catalog. The mean never reads an owner's
+            // name, and resolving every distinct owner's profile would be the one
+            // cost of that read the repositories tab does not already pay on
+            // every load of its own.
+            repositoryTrend: new GetRepositoryTrend(
+              store,
+              catalogReader,
+              new ListRepositorySummaries(store),
+            ),
             owned: new ListOwnedRepositories(repositories, catalogReader),
             identities: new ListIdentities(store, catalogReader),
             directoryUsers: new ListDirectoryUsers(catalogReader),

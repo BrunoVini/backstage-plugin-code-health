@@ -278,8 +278,13 @@ The wire contract, and the pure functions both sides have to agree on.
   once per query and filters it with `searchDirectoryUsers` — the catalog's filter API matches whole
   values, not substrings, and the listing already enumerates the directory for its suggestions on
   the same screen — and the route answers an empty query with nobody rather than the first page of
-  everybody. The Link button enables only for a picked user or text that parses as a reference: a
-  bare name sent to the backend comes back as a refusal the reader cannot act on. A sort or a filter
+  everybody. The Link button enables only for a picked user or text that parses as a **user**
+  reference: a bare name sent to the backend comes back as a refusal the reader cannot act on, and
+  a pasted `group:default/platform` parses but names nobody a link can attach to — `LinkIdentity`
+  refuses any kind but `user`, and `getUsersByRef` skips any entity that is not a `User` rather
+  than dressing a group up as one. The empty-search wording says "no match found" and offers the
+  pasted reference, never "nobody in the directory matches": the read behind it is capped at
+  `MAX_DIRECTORY_USERS`, so on a very large tenant a person can exist and not be returned. A sort or a filter
   on the identities table resets the page asynchronously (TanStack queues it), so a test that sorts
   and then counts rows has to wait.
 - **A numeric column opens on its highest figure, and the unmeasured sit after the measured either
@@ -298,7 +303,12 @@ The wire contract, and the pure functions both sides have to agree on.
   has to tell "nobody has WakaTime linked" from "the team never opens an editor".
   `GetRepositoryTrendResponse.fleet` is `repositoryFleetRatesOf` over `ListRepositorySummaries.run`
   for the same window — the table's own rows, archived ones left out — and is `null` when the
-  command was built without that reader. The client reads an absent `fleet` from an older backend as
+  command was built without that reader. The plugin wires that reader **without the catalog**:
+  the mean never reads an owner's name, and resolving every distinct owner's profile would be
+  the one part of the tab's read a detail page does not already pay for. The rest is the same
+  database read the repositories tab performs on every load, and a per-window cache was rejected
+  because every read here serves from the database so that a link or an exclusion shows on the
+  next request. The client reads an absent `fleet` from an older backend as
   `null`, and both cards then print the figures alone and say no average was sent. The delta is
   `rateDeltaOf`: a signed share of the average, `null` against zero or nothing, and said in words —
   "25% above the team" — so no reader has to remember which way a minus sign points.

@@ -628,6 +628,21 @@ describe("codeHealthPlugin", () => {
       expect(response.status).toBe(400);
     });
 
+    it("should reject a reference that names something other than a user", async () => {
+      // given
+      // A group parses as a reference; it is still nobody a link can attach to.
+      const { server } = await startBackend([]);
+
+      // when
+      const response = await request(server)
+        .put("/api/code-health/v1/identities/links")
+        .send({ source: "wakatime", sourceKey: "jrios", entityRef: "group:default/platform" });
+
+      // then
+      expect(response.status).toBe(400);
+      expect(response.body.error.message).toContain("names a group");
+    });
+
     it("should reject a reference that is not one at all", async () => {
       // given
       // A bare name reaches the catalog's own parser, which throws rather than

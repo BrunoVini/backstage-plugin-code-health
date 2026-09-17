@@ -27,6 +27,7 @@ import Typography from "@material-ui/core/Typography";
 import { useMemo } from "react";
 import { Link as RouterLink, useParams } from "react-router-dom";
 import { topContributorsByCommits } from "../../domain/entities/insights";
+import { formatWindowSpan } from "../../domain/entities/window_span";
 import {
   buildSuccessRateTrend,
   buildTrend,
@@ -198,13 +199,6 @@ const Figure = ({ label, value }: { label: string; value: number | string | null
   </Box>
 );
 
-const formatWindowDay = (instant: string): string => {
-  const parsed = new Date(instant);
-  return Number.isNaN(parsed.getTime())
-    ? instant
-    : parsed.toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" });
-};
-
 /**
  * What the matching Jira project looked like at the end of the window.
  *
@@ -231,8 +225,10 @@ const JiraFigures = ({ metrics }: { metrics: JiraRepositoryMetrics | null }) => 
     <Box>
       <Box mb={1}>
         <Typography variant="caption" color="textSecondary">
-          {`${scope}, ${formatWindowDay(metrics.window.from)} to ${formatWindowDay(
-            metrics.window.to,
+          {/* Named by the last day it covers: the window ends at the start of
+              tomorrow, which is not a day it holds. */}
+          {`${scope}, ${formatWindowSpan(
+            metrics.window,
           )} — the snapshot's own trailing window, not the range picked above`}
         </Typography>
       </Box>

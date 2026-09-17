@@ -25,6 +25,15 @@ export class MalformedEntityRefError extends Error {
   }
 }
 
+export class NotAUserReferenceError extends Error {
+  constructor(entityRef: string, kind: string) {
+    super(
+      `\`${entityRef}\` names a ${kind}, and a link needs a \`user:<namespace>/<name>\` reference`,
+    );
+    this.name = "NotAUserReferenceError";
+  }
+}
+
 /**
  * Attaches an account to a catalog user, or detaches it again.
  *
@@ -59,8 +68,16 @@ export class LinkIdentity {
     // rejected without touching the database, and the caller is told which of
     // the two things was wrong rather than being sent looking for a user that
     // was never a reference in the first place.
-    if (parseEntityRef(input.entityRef) === null) {
+    const parsed = parseEntityRef(input.entityRef);
+    if (parsed === null) {
       throw new MalformedEntityRefError(input.entityRef);
+    }
+    // Kind as well as shape. Any kind parses, and the directory lookup below
+    // would answer for a group or a component with a user-shaped record built
+    // from its name — a link to `group:default/platform` would then be stored
+    // as `user:default/platform`, which is either nobody or the wrong person.
+    if (parsed.kind !== "user") {
+      throw new NotAUserReferenceError(input.entityRef, parsed.kind);
     }
 
     const observed = await this.store.listIdentities({ sources: [input.source] });

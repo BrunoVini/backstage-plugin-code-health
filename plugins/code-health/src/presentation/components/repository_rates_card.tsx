@@ -22,6 +22,7 @@ import {
   repositoryRatesOf,
   windowDaysOf,
 } from "@rios0rios0/backstage-plugin-code-health-common";
+import { formatWindowSpan } from "../../domain/entities/window_span";
 import { RateDelta, RateFigure } from "./rate_comparison";
 
 const useStyles = makeStyles((theme) => ({
@@ -76,16 +77,10 @@ const rowsFor = (capabilities: IntegrationCapabilities): readonly RateRow[] => [
 
 const FLEET = "the fleet";
 
-const formatWindowDay = (instant: string): string => {
-  const parsed = new Date(instant);
-  return Number.isNaN(parsed.getTime())
-    ? instant
-    : parsed.toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" });
-};
-
 /**
  * Why the tickets row is not read over the range picked, said only where the
- * row exists at all.
+ * row exists at all. The window is named by the last day it covers: Jira's
+ * ends at the start of tomorrow, which is not a day it holds.
  */
 const ticketsNote = (
   capabilities: IntegrationCapabilities,
@@ -95,9 +90,9 @@ const ticketsNote = (
   if (jiraWindow === null) {
     return " Tickets resolved is a rate over Jira's own trailing window, which the range picker does not move; no Jira project is named by this repository's catalog entity.";
   }
-  return ` Tickets resolved is a rate over Jira's own trailing window, ${formatWindowDay(
-    jiraWindow.from,
-  )} to ${formatWindowDay(jiraWindow.to)}, which the range picker does not move.`;
+  return ` Tickets resolved is a rate over Jira's own trailing window, ${formatWindowSpan(
+    jiraWindow,
+  )}, which the range picker does not move.`;
 };
 
 export interface RepositoryRatesCardProps {

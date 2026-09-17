@@ -135,19 +135,29 @@ export const IdentityLinkCell = ({
   }, [row.suggestions, search.users]);
 
   // What pressing the button would send: the picked user's own reference, or
-  // whatever was typed once it is a reference at all.
+  // whatever was typed once it is a *user* reference. Any kind parses, and a
+  // pasted `group:default/platform` would otherwise be sent to a backend that
+  // looks the reference up and links whatever it finds under it.
   const typed = inputValue.trim();
-  const target = picked?.entityRef ?? (parseEntityRef(typed) === null ? null : typed);
+  const typedRef = parseEntityRef(typed);
+  const target =
+    picked?.entityRef ?? (typedRef !== null && typedRef.kind === "user" ? typed : null);
 
   // Said under the field rather than only in the popup, because a row that
   // carries likely matches always has something to list there — and a reader
   // who typed a name the directory does not hold would otherwise be shown the
   // likely matches and left to guess whether anything was searched at all.
+  //
+  // "No match found", never "nobody in the directory matches": the search
+  // runs over what the catalog returned, which on a very large tenant is a
+  // capped slice of the directory rather than all of it. A sentence claiming
+  // to have looked at everybody would send the reader away from the one
+  // remedy that always works — pasting the reference — so it offers it.
   const searchNote = (() => {
     if (search.error !== null) return `The directory could not be searched: ${search.error}`;
     if (typed.length < DIRECTORY_SEARCH_MIN_LENGTH) return null;
     if (search.isSearching || search.users.length > 0) return null;
-    return "Nobody in the directory matches that.";
+    return "No match found. A user:default/name reference pasted here still links, even somebody the search did not return.";
   })();
 
   const noOptionsText =

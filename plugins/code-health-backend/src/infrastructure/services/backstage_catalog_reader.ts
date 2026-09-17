@@ -253,6 +253,11 @@ export class BackstageCatalogReader implements CatalogReader, DirectoryReader {
       // somebody who has left the organisation since the link was made.
       const ref = wanted[index];
       if (item === undefined || ref === undefined) continue;
+      // Only a `User` is a user. The lookup answers for any kind the reference
+      // names, and `toDirectoryUser` would otherwise dress a group or a
+      // component up as `user:<namespace>/<name>` — a record for an entity
+      // that does not exist, keyed under a person's reference.
+      if (item.kind.toLowerCase() !== "user") continue;
       found.set(ref, toDirectoryUser(item));
     }
     return found;

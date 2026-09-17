@@ -5,8 +5,14 @@ import {
 } from "@rios0rios0/backstage-plugin-code-health-common";
 import type { DirectoryReader } from "../services/identity_resolver";
 
-/** The most a caller may ask for; more than that is a listing, not a search. */
-export const MAX_DIRECTORY_USERS_LIMIT = 50;
+/**
+ * The most hits a caller may ask for; more than that is a listing, not a search.
+ *
+ * Distinct from `MAX_DIRECTORY_USERS` in the catalog reader, which is how much
+ * of the directory is ever *read*. The two are named apart on purpose: one
+ * bounds the answer, the other bounds the question.
+ */
+export const MAX_DIRECTORY_SEARCH_HITS = 50;
 
 /**
  * The catalog users whose name, address or entity name contains what somebody
@@ -25,6 +31,12 @@ export const MAX_DIRECTORY_USERS_LIMIT = 50;
  * for nothing would return the first page of a directory of thousands, which
  * is a listing nobody asked for and the one thing this screen refuses to do
  * behind a search box.
+ *
+ * The read is the reader's capped one — `MAX_DIRECTORY_USERS` entities at
+ * most — so on a tenant larger than the cap a person can exist and still not
+ * be found here. The screen therefore never says "nobody in the directory
+ * matches"; it says no match was found and offers the pasted reference, which
+ * is looked up by itself and does not depend on the cap.
  */
 export class ListDirectoryUsers {
   constructor(private readonly directory: DirectoryReader) {}
@@ -35,7 +47,7 @@ export class ListDirectoryUsers {
 
     const limit = Math.min(
       Math.max(1, Math.trunc(input.limit ?? MAX_DIRECTORY_SEARCH_RESULTS)),
-      MAX_DIRECTORY_USERS_LIMIT,
+      MAX_DIRECTORY_SEARCH_HITS,
     );
     const users = await this.directory.listUsers();
     return searchDirectoryUsers(users, query, limit);

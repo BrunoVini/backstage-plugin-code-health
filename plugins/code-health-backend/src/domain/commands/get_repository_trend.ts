@@ -117,6 +117,15 @@ export class GetRepositoryTrend {
      * reads, so the average this repository is compared against is the
      * average of the rows that table shows. Optional: without it the trend
      * carries no fleet, and the card says it has nothing to compare against.
+     *
+     * It is the tab's read, not a lighter one, on purpose: computing the mean
+     * any other way would be a second reading of the table's own rows, and
+     * the two would drift. The one part of that read the mean never needs is
+     * the owners' profiles, so the plugin wires this without the catalog. A
+     * per-window cache was weighed and rejected — every read here serves from
+     * the database so that a link or an exclusion made on the Identities tab
+     * shows on the next request, and a cached mean would be the first answer
+     * in the plugin that lags behind it.
      */
     private readonly fleet?: Pick<ListRepositorySummaries, "run">,
   ) {}
