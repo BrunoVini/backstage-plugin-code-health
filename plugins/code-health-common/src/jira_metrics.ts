@@ -1,3 +1,5 @@
+import { formatCount } from "./number_format";
+
 /**
  * The period a Jira measurement covers, as ISO 8601 instants.
  *
@@ -334,9 +336,13 @@ export const formatHours = (hours: number): string => {
     const minutes = Math.round((hours - whole) * 60);
     return minutes > 0 ? `${whole}h ${minutes}m` : `${whole}h`;
   }
+  // The day count is grouped: a ticket left open across a reorganisation gives
+  // a lead time in four figures of days, and the cell it lands in is a cell.
   const days = Math.floor(hours / HOURS_PER_DAY);
   const remainder = Math.round(hours - days * HOURS_PER_DAY);
-  return remainder > 0 ? `${days}d ${remainder}h` : `${days}d`;
+  return remainder > 0
+    ? `${formatCount(days)}d ${remainder}h`
+    : `${formatCount(days)}d`;
 };
 
 /**

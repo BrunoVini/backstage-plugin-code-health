@@ -144,6 +144,7 @@ The wire contract, and the pure functions both sides have to agree on.
 | File | Purpose |
 |---|---|
 | `src/api.ts` | Every request and response shape, and the plugin id both packages register under |
+| `src/number_format.ts` | The one place a figure is turned into text — `formatCount`, `formatDecimal`, `formatFixed`, `formatPercent` — in a pinned locale, so the two packages spell one number one way |
 | `src/score.ts` | What a score is — a value, the evidence behind it, the components it was folded from — and `combineScore`, which redistributes the weight of anything unmeasured |
 | `src/productivity_score.ts` | The per-person components and their nominal weights, which integration each needs, the renormalisation over the configured set, and the fleet's **mean daily rate** the relative ones are read against |
 | `src/contributor_rates.ts` | A window total turned into a daily, weekly and monthly rate, and the wording every rate is said in |
@@ -156,6 +157,24 @@ The wire contract, and the pure functions both sides have to agree on.
 | `src/identity.ts` | Besides the suggestion ranking, `searchDirectoryUsers` — the "like" search the link picker and the backend share, every word matched in any order |
 
 ## Decisions worth not re-litigating
+
+- **Every figure the plugin prints goes through `number_format.ts`, in a pinned locale.** A figure
+  here is read, not parsed: `76604.9` in the monthly column of the Averages card is five digits a
+  reader counts before knowing whether it says seventy or seven hundred thousand, and the card
+  stacks the team's average under each one, so the comparison it exists for became the counting
+  exercise. Grouping is the fix; having one place decide it is what stops the fix drifting, because
+  `toFixed`, `toLocaleString` and a bare interpolation were all in use on figures a reader sees
+  side by side. The locale is `en-US` rather than the runtime's, and that is the load-bearing half:
+  a score component's sentence is built by the **backend** for a trend and by the **browser** for
+  the same person's table row, so `toLocaleString()` with no argument lets a server under
+  `LANG=de_DE` and a browser under `en-GB` spell one figure two ways on one screen — and every
+  noun beside these figures is English anyway. A count is `formatCount`, anything that can carry a
+  fraction is `formatDecimal` (throughput, story points, an axis tick at `0.5`), a column that
+  wants to align on the point is `formatFixed`, and a percentage is `formatPercent` — grouped too,
+  because a share of the team's average has no ceiling and `1110% above the team` is four digits
+  nobody reads as eleven times. Durations group their largest unit for the same reason: a
+  contributor's summed Sonar debt reaches four figures of working days, and the fleet's coding
+  time five figures of hours.
 
 - **The catalog is the only source of repositories.** Nothing is enumerated from a provider API. The
   previous design listed every project and repository in the organisation on every dashboard load,

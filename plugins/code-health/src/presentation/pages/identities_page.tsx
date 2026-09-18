@@ -25,6 +25,7 @@ import type {
 import {
   EXCLUSION_REASON_LABELS,
   IDENTITY_SOURCE_LABELS,
+  formatCount,
   isIdentitySource,
 } from "@rios0rios0/backstage-plugin-code-health-common";
 import { useCallback, useMemo, useState } from "react";
@@ -433,7 +434,8 @@ export const IdentitiesPage = ({
             gridGap={8}
           >
             <Typography variant="body2" color="textSecondary">
-              {identities.length} listed · {unlinkedCount} unlinked · {excludedCount} excluded
+              {formatCount(identities.length)} listed · {formatCount(unlinkedCount)} unlinked ·{" "}
+              {formatCount(excludedCount)} excluded
             </Typography>
             <PaginationControls table={table} />
           </Box>

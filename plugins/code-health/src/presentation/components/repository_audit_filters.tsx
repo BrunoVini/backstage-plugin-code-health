@@ -1,3 +1,4 @@
+import { formatCount } from "@rios0rios0/backstage-plugin-code-health-common";
 import Box from "@material-ui/core/Box";
 import Button from "@material-ui/core/Button";
 import Chip from "@material-ui/core/Chip";
@@ -74,7 +75,7 @@ export const RepositoryAuditFilters = ({
               label={
                 <>
                   {audit.label}{" "}
-                  <span className={classes.count}>{count}</span>
+                  <span className={classes.count}>{formatCount(count)}</span>
                 </>
               }
             />

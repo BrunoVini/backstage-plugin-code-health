@@ -1,3 +1,7 @@
+import {
+  formatCount,
+  formatPercent,
+} from "@rios0rios0/backstage-plugin-code-health-common";
 import Box from "@material-ui/core/Box";
 import Typography from "@material-ui/core/Typography";
 import { makeStyles } from "@material-ui/core/styles";
@@ -75,7 +79,7 @@ export const StatusBreakdown = ({ slices }: StatusBreakdownProps) => {
             key={slice.label}
             className={classes.row}
             role="listitem"
-            aria-label={`${slice.label}: ${slice.count} of ${total}`}
+            aria-label={`${slice.label}: ${formatCount(slice.count)} of ${formatCount(total)}`}
           >
             <Icon className={classes.icon} style={{ color }} aria-hidden="true" />
             <Typography variant="body2" className={classes.label}>
@@ -92,10 +96,10 @@ export const StatusBreakdown = ({ slices }: StatusBreakdownProps) => {
             </Box>
             <Box textAlign="right" whiteSpace="nowrap">
               <Typography variant="body2" component="span" className={classes.value}>
-                {slice.count.toLocaleString()}
+                {formatCount(slice.count)}
               </Typography>
               <Typography variant="caption" component="span" className={classes.share}>
-                {Math.round(share)}%
+                {formatPercent(share, 0)}
               </Typography>
             </Box>
           </Box>

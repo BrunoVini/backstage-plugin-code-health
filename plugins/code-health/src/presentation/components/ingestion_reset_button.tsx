@@ -11,6 +11,7 @@ import Typography from "@material-ui/core/Typography";
 import { makeStyles } from "@material-ui/core/styles";
 import HistoryIcon from "@material-ui/icons/History";
 import type { ResetIngestionResponse } from "@rios0rios0/backstage-plugin-code-health-common";
+import { formatCount } from "@rios0rios0/backstage-plugin-code-health-common";
 import { useState } from "react";
 import type { ResetReach } from "../../domain/entities/reset_reach";
 import { resetReachOptions } from "../../domain/entities/reset_reach";
@@ -32,7 +33,7 @@ export interface IngestionResetButtonProps {
 }
 
 const counted = (count: number, singular: string, plural: string): string =>
-  `${count.toLocaleString()} ${count === 1 ? singular : plural}`;
+  `${formatCount(count)} ${count === 1 ? singular : plural}`;
 
 const messageOf = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);

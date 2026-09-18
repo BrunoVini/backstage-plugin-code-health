@@ -17,6 +17,7 @@ import type {
 import {
   contributorRatesOf,
   fleetContributorRatesOf,
+  formatCount,
   formatDuration,
   formatRate,
   RATE_PERIODS,
@@ -200,7 +201,7 @@ export const ContributorRatesCard = ({
       <Typography variant="caption" color="textSecondary" className={classes.note}>
         {fleet === null
           ? "No team average was sent for this range, so nothing here is compared. "
-          : `The team is the ${fleet.people} ${
+          : `The team is the ${formatCount(fleet.people)} ${
               fleet.people === 1 ? "person" : "people"
             } measured in this range, and each average is the mean over the people that row could be measured on. `}
         A month is the mean Gregorian month, so twelve of them add back up to a year.

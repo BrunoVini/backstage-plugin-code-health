@@ -103,6 +103,28 @@ describe("ContributorRatesCard", () => {
     expect(screen.getByText(/divided by the 30 days this range spans/u)).toBeInTheDocument();
   });
 
+  it("should group every figure past a thousand, the team's average and the comparison with it", async () => {
+    // given
+    // The monthly column is where this bites: 9,180 commits over thirty days
+    // is 9,313.9 a month, which ungrouped is five digits a reader counts
+    // rather than reads — and the team's 24.4 beneath it turns the comparison
+    // into a counting exercise. The delta has no ceiling either: against a
+    // team averaging four fifths of a commit a day, 306 a day is well past a
+    // thousand percent.
+    await renderCard({
+      summary: ContributorBuilder.create().withCommits(9180).build(),
+      fleet: aFleet(),
+    });
+
+    // when
+    const figures = figuresOn("Commits");
+
+    // then
+    expect(figures).toEqual(["306", "2,142", "9,313.9"]);
+    expect(teamFiguresOn("Commits")).toEqual(["0.8", "5.6", "24.4"]);
+    expect(comparisonOn("Commits")).toBe("38,150% above the team");
+  });
+
   it("should print the team's figure under each of the person's, in the same period", async () => {
     // given
     // The comparison is right beneath the number rather than across the row,

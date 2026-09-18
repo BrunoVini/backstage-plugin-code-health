@@ -4,8 +4,10 @@ import type {
   TimeSeriesPoint,
 } from "@rios0rios0/backstage-plugin-code-health-common";
 import {
-  computeRate,
   SONAR_COVERAGE_TARGET,
+  computeRate,
+  formatCount,
+  formatPercent,
 } from "@rios0rios0/backstage-plugin-code-health-common";
 
 /** One bar of a ranking chart. */
@@ -68,7 +70,7 @@ const topOf = (items: readonly RankedItem[]): RankedItem[] =>
   [...items].filter((item) => item.value > 0).sort(byValueDescending).slice(0, RANK_SIZE);
 
 const plural = (count: number, noun: string): string =>
-  `${count} ${noun}${count === 1 ? "" : "s"}`;
+  `${formatCount(count)} ${noun}${count === 1 ? "" : "s"}`;
 
 export const topContributorsByCommits = (
   contributors: readonly ContributorSummary[],
@@ -96,7 +98,7 @@ export const topReviewers = (contributors: readonly ContributorSummary[]): Ranke
       id: contributor.key,
       label: contributor.displayName,
       value: contributor.reviewsGiven,
-      detail: `${contributor.prApprovalRate}% approved`,
+      detail: `${formatPercent(contributor.prApprovalRate)} approved`,
       entityRef: contributor.entityRef,
       avatarUrl: contributor.avatarUrl,
     })),
@@ -330,7 +332,7 @@ export const lowestCoverageRepositories = (
               detail:
                 repository.sonarMetrics.qualityGateStatus === "ERROR"
                   ? "gate failing"
-                  : `${repository.sonarMetrics.bugs} bugs`,
+                  : plural(repository.sonarMetrics.bugs, "bug"),
               entityRef: repository.entityRef,
               avatarUrl: null,
             },

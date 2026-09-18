@@ -1,3 +1,4 @@
+import { formatCount, formatFixed } from "./number_format";
 import type { RepositorySummary } from "./repository_summary";
 import {
   combineScore,
@@ -50,10 +51,10 @@ const NO_SONAR = "no Sonar project is named by the catalog entity";
 const NO_SNAPSHOT = "not measured until the first daily snapshot";
 
 const plural = (count: number, noun: string): string =>
-  `${count.toLocaleString()} ${noun}${count === 1 ? "" : "s"}`;
+  `${formatCount(count)} ${noun}${count === 1 ? "" : "s"}`;
 
 const vulnerabilities = (count: number): string =>
-  `${count.toLocaleString()} ${count === 1 ? "vulnerability" : "vulnerabilities"}`;
+  `${formatCount(count)} ${count === 1 ? "vulnerability" : "vulnerabilities"}`;
 
 /** A curve that starts at one and halves at `halfPoint`, never reaching zero. */
 const decay = (value: number, halfPoint: number): number => 1 / (1 + value / halfPoint);
@@ -82,7 +83,7 @@ const coverageOf = (summary: RepositorySummary): ScoreComponent => {
     definition,
     sonar.coverage,
     shareOf(sonar.coverage, SONAR_COVERAGE_TARGET),
-    `${sonar.coverage.toFixed(1)}% covered, against the ${SONAR_COVERAGE_TARGET}% gate`,
+    `${formatFixed(sonar.coverage)}% covered, against the ${SONAR_COVERAGE_TARGET}% gate`,
   );
 };
 
@@ -109,7 +110,7 @@ const duplicationsOf = (summary: RepositorySummary): ScoreComponent => {
     definition,
     sonar.duplications,
     1 - shareOf(sonar.duplications, DUPLICATION_CEILING_PERCENT),
-    `${sonar.duplications.toFixed(1)}% duplicated; ${DUPLICATION_CEILING_PERCENT}% scores nothing`,
+    `${formatFixed(sonar.duplications)}% duplicated; ${DUPLICATION_CEILING_PERCENT}% scores nothing`,
   );
 };
 
@@ -151,7 +152,7 @@ const buildSuccessOf = (summary: RepositorySummary): ScoreComponent => {
     definition,
     Math.round((summary.activity.buildsSucceeded / decided) * 1000) / 10,
     summary.activity.buildsSucceeded / decided,
-    `${summary.activity.buildsSucceeded.toLocaleString()} of ${plural(decided, "decided build")} succeeded`,
+    `${formatCount(summary.activity.buildsSucceeded)} of ${plural(decided, "decided build")} succeeded`,
   );
 };
 
@@ -170,7 +171,7 @@ const complianceOf = (summary: RepositorySummary): ScoreComponent => {
     definition,
     passing,
     shareOf(passing, checks.length),
-    `${passing} of ${checks.length} checks pass`,
+    `${formatCount(passing)} of ${formatCount(checks.length)} checks pass`,
   );
 };
 
@@ -214,7 +215,7 @@ const abandonmentOf = (summary: RepositorySummary): ScoreComponent => {
     definition,
     summary.activity.pullRequestsMerged,
     shareOf(summary.activity.pullRequestsMerged, closed),
-    `${summary.activity.pullRequestsMerged.toLocaleString()} of ${plural(closed, "closed pull request")} merged rather than abandoned`,
+    `${formatCount(summary.activity.pullRequestsMerged)} of ${plural(closed, "closed pull request")} merged rather than abandoned`,
   );
 };
 

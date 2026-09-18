@@ -257,6 +257,17 @@ describe("describeRateDelta", () => {
     expect(describeRateDelta(2)).toBe("200% above the team");
   });
 
+  it("should group a delta past a thousand percent", () => {
+    // given
+    // This is the one percentage on the dashboard with no ceiling: a share of
+    // the team's average runs well past a thousand percent for anybody far
+    // ahead of it, and `38150% above the team` is five digits nobody reads.
+
+    // when / then
+    expect(describeRateDelta(381.5)).toBe("38,150% above the team");
+    expect(describeRateDelta(11.1)).toBe("1,110% above the team");
+  });
+
   it("should call a difference the rounding removes level", () => {
     // given / when / then
     expect(describeRateDelta(0.004)).toBe("level with the team");

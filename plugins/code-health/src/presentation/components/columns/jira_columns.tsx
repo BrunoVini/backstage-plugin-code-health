@@ -9,9 +9,12 @@ import type {
   RepositorySummary,
 } from "@rios0rios0/backstage-plugin-code-health-common";
 import {
+  formatCount,
+  formatDecimal,
   formatHours,
-  interactionsAreComplete,
+  formatPercent,
   interactionTotal,
+  interactionsAreComplete,
   meanHours,
 } from "@rios0rios0/backstage-plugin-code-health-common";
 import type { ColumnDef } from "@tanstack/react-table";
@@ -104,15 +107,17 @@ const InteractionsCell = ({ interactions }: { interactions: JiraInteractions }) 
   const complete = interactionsAreComplete(interactions);
 
   const parts = [
-    interactions.comments === null ? null : `${interactions.comments} comments`,
-    interactions.worklogEntries === null ? null : `${interactions.worklogEntries} logged`,
-    `${interactions.transitions} moves`,
+    interactions.comments === null ? null : `${formatCount(interactions.comments)} comments`,
+    interactions.worklogEntries === null
+      ? null
+      : `${formatCount(interactions.worklogEntries)} logged`,
+    `${formatCount(interactions.transitions)} moves`,
   ].filter((part): part is string => part !== null);
 
   return (
     <Box>
       <Typography variant="body2">
-        {total.toLocaleString()}
+        {formatCount(total)}
         {complete ? "" : "+"}
       </Typography>
       <Typography variant="caption" className={classes.caption}>
@@ -146,7 +151,7 @@ const ReopenedCell = ({ count }: { count: number }) => {
       className={count > 0 ? classes.rework : undefined}
       data-tone={count > 0 ? "rework" : "clean"}
     >
-      {count.toLocaleString()}
+      {formatCount(count)}
     </Typography>
   );
 };
@@ -160,8 +165,8 @@ export const jiraContributorColumns = (): ColumnDef<ContributorSummary>[] => [
       const metrics = row.original.jiraMetrics;
       return (
         <StackedCell
-          value={metrics === null ? null : metrics.issuesResolved.toLocaleString()}
-          caption={metrics === null ? null : `${metrics.issuesCreated} raised`}
+          value={metrics === null ? null : formatCount(metrics.issuesResolved)}
+          caption={metrics === null ? null : `${formatCount(metrics.issuesCreated)} raised`}
         />
       );
     },
@@ -192,8 +197,8 @@ export const jiraContributorColumns = (): ColumnDef<ContributorSummary>[] => [
       const estimated = metrics?.storyPointsEstimated ?? null;
       return (
         <StackedCell
-          value={completed === null ? null : completed.toLocaleString()}
-          caption={estimated === null ? null : `${estimated.toLocaleString()} assigned`}
+          value={completed === null ? null : formatDecimal(completed)}
+          caption={estimated === null ? null : `${formatDecimal(estimated)} assigned`}
         />
       );
     },
@@ -209,7 +214,7 @@ export const jiraContributorColumns = (): ColumnDef<ContributorSummary>[] => [
       return (
         <StackedCell
           value={average === null ? null : formatHours(average)}
-          caption={cycle === null ? null : `over ${cycle.issues}`}
+          caption={cycle === null ? null : `over ${formatCount(cycle.issues)}`}
         />
       );
     },
@@ -254,8 +259,8 @@ export const jiraRepositoryColumns = (): ColumnDef<RepositorySummary>[] => [
       const metrics = row.original.jiraMetrics;
       return (
         <StackedCell
-          value={metrics === null ? null : metrics.issuesResolved.toLocaleString()}
-          caption={metrics === null ? null : `${metrics.issuesCreated} opened`}
+          value={metrics === null ? null : formatCount(metrics.issuesResolved)}
+          caption={metrics === null ? null : `${formatCount(metrics.issuesCreated)} opened`}
         />
       );
     },
@@ -267,7 +272,8 @@ export const jiraRepositoryColumns = (): ColumnDef<RepositorySummary>[] => [
     header: () => <HeaderWithHelp label="Throughput" help={THROUGHPUT_HELP} />,
     cell: ({ getValue }) => {
       const rate = getValue<number | null>();
-      return <StackedCell value={rate === null ? null : `${rate}`} caption="per week" />;
+      // Issues per week is a rate, so it keeps the decimal it arrives with.
+      return <StackedCell value={rate === null ? null : formatDecimal(rate)} caption="per week" />;
     },
     enableColumnFilter: false,
   },
@@ -295,9 +301,13 @@ export const jiraRepositoryColumns = (): ColumnDef<RepositorySummary>[] => [
       const ratio = metrics?.bugRatio ?? null;
       return (
         <StackedCell
-          value={ratio === null ? null : `${ratio}%`}
+          value={ratio === null ? null : formatPercent(ratio)}
           caption={
-            metrics === null ? null : `${metrics.resolvedByType.bug} of ${metrics.issuesResolved}`
+            metrics === null
+              ? null
+              : `${formatCount(metrics.resolvedByType.bug)} of ${formatCount(
+                  metrics.issuesResolved,
+                )}`
           }
         />
       );
@@ -314,8 +324,8 @@ export const jiraRepositoryColumns = (): ColumnDef<RepositorySummary>[] => [
       const oldest = metrics?.oldestOpenIssue ?? null;
       return (
         <StackedCell
-          value={open === null ? null : open.toLocaleString()}
-          caption={oldest === null ? null : `oldest ${oldest.ageDays}d`}
+          value={open === null ? null : formatCount(open)}
+          caption={oldest === null ? null : `oldest ${formatCount(oldest.ageDays)}d`}
         />
       );
     },

@@ -176,6 +176,13 @@ export type {
   RepositoryRateSet,
 } from "./repository_rates";
 
+export {
+  formatCount,
+  formatDecimal,
+  formatFixed,
+  formatPercent,
+} from "./number_format";
+
 export { lastCoveredDayOf } from "./time_window";
 
 export { computeRate, measuredByVersionControl } from "./contributor_summary";

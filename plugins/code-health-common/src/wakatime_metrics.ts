@@ -1,3 +1,5 @@
+import { formatCount, formatFixed } from "./number_format";
+
 /**
  * One slice of a WakaTime breakdown — a language, an editor, a project.
  *
@@ -135,11 +137,17 @@ export interface WakaTimeSeriesPoint {
   readonly contributors: number;
 }
 
+/**
+ * A duration in hours and minutes, with the hours grouped.
+ *
+ * The fleet's coding time over a year is five figures of hours, and the KPI
+ * tile it lands on is read at a glance or not at all.
+ */
 export const formatDuration = (totalSeconds: number): string => {
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   if (hours === 0) return `${minutes}m`;
-  return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+  return minutes > 0 ? `${formatCount(hours)}h ${minutes}m` : `${formatCount(hours)}h`;
 };
 
 /**
@@ -147,9 +155,9 @@ export const formatDuration = (totalSeconds: number): string => {
  * as a barcode rather than as a number.
  */
 export const formatTokens = (tokens: number): string => {
-  if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`;
-  if (tokens >= 1_000) return `${(tokens / 1_000).toFixed(1)}k`;
-  return `${tokens}`;
+  if (tokens >= 1_000_000) return `${formatFixed(tokens / 1_000_000)}M`;
+  if (tokens >= 1_000) return `${formatFixed(tokens / 1_000)}k`;
+  return formatCount(tokens);
 };
 
 export const totalModelCost = (metrics: WakaTimeAiMetrics): number =>

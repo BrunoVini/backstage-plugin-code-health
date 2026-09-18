@@ -12,6 +12,19 @@ import {
 import { WakaTimeMetricsBuilder } from "./builders/wakatime_metrics_builder";
 
 describe("formatDuration", () => {
+  it("should group the hours past a thousand", () => {
+    // given
+    // The fleet's coding time over a year is five figures of hours, and the
+    // KPI tile it lands on is read at a glance or not at all.
+    const seconds = 4_500_000;
+
+    // when
+    const result = formatDuration(seconds);
+
+    // then
+    expect(result).toBe("1,250h");
+  });
+
   it("should return 0m when totalSeconds is 0", () => {
     // given
     const seconds = 0;

@@ -26,6 +26,8 @@ import type {
 } from "@rios0rios0/backstage-plugin-code-health-common";
 import {
   computeRepositoryHealthScore,
+  formatCount,
+  formatFixed,
   formatScoreValue,
   scoreBand,
 } from "@rios0rios0/backstage-plugin-code-health-common";
@@ -245,7 +247,7 @@ const columnsFor = (descending: (column: string) => boolean): ColumnDef<GradedRe
     header: "Coverage",
     cell: ({ getValue }) => {
       const value = getValue<number | null>();
-      return <MetricCell value={value === null ? null : `${value.toFixed(1)}%`} />;
+      return <MetricCell value={value === null ? null : `${formatFixed(value)}%`} />;
     },
     sortingFn: measuredFirst(
       (row) => row.repository.sonarMetrics?.coverage ?? null,
@@ -349,7 +351,8 @@ const OwnedTable = ({ graded }: { graded: GradedRepository[] }) => {
         gridGap={8}
       >
         <Typography variant="body2" color="textSecondary">
-          {table.getFilteredRowModel().rows.length} of {graded.length} repositories
+          {formatCount(table.getFilteredRowModel().rows.length)} of{" "}
+          {formatCount(graded.length)} repositories
         </Typography>
         <PaginationControls table={table} />
       </Box>

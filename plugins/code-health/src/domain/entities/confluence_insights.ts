@@ -9,6 +9,8 @@ import type {
 import {
   confluenceContributions,
   confluenceStaleShare,
+  formatCount,
+  formatPercent,
 } from "@rios0rios0/backstage-plugin-code-health-common";
 import type { GapItem, GapList, RankedItem, StatusSlice } from "./insights";
 import { GAP_LIST_SIZE } from "./insights";
@@ -180,7 +182,7 @@ export const topConfluenceAuthors = (
           id: contributor.key,
           label: contributor.displayName,
           value: confluenceContributions(metrics),
-          detail: `${metrics.pagesCreated} created`,
+          detail: `${formatCount(metrics.pagesCreated)} created`,
           entityRef: contributor.entityRef,
           avatarUrl: contributor.avatarUrl,
         },
@@ -208,7 +210,7 @@ export const topConfluenceWriters = (
           id: contributor.key,
           label: contributor.displayName,
           value: metrics.wordsAdded,
-          detail: `${metrics.pagesMeasuredForVolume} pages measured`,
+          detail: `${formatCount(metrics.pagesMeasuredForVolume)} pages measured`,
           entityRef: contributor.entityRef,
           avatarUrl: contributor.avatarUrl,
         },
@@ -291,8 +293,10 @@ export const stalestSpaces = (
             entityRef: null,
             reason:
               metrics.stalestPage === null
-                ? `${share}% stale`
-                : `${share}% stale · oldest ${dateOnly(metrics.stalestPage.lastModifiedAt)}`,
+                ? `${formatPercent(share)} stale`
+                : `${formatPercent(share)} stale · oldest ${dateOnly(
+                    metrics.stalestPage.lastModifiedAt,
+                  )}`,
             share,
           },
         ];
@@ -321,7 +325,7 @@ export const strandedPages = (
                 id: metrics.space.key,
                 label: metrics.space.name ?? metrics.space.key,
                 entityRef: null,
-                reason: `${metrics.parentlessPages} with no parent`,
+                reason: `${formatCount(metrics.parentlessPages)} with no parent`,
               },
             ],
       )

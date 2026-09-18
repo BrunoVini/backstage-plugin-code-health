@@ -234,6 +234,16 @@ describe("formatHours", () => {
     expect(formatted).toEqual(["15m", "3h", "3h 30m", "1d", "2d 2h"]);
   });
 
+  it("should group a day count past a thousand", () => {
+    // given
+    // A ticket left open across a reorganisation gives a lead time in four
+    // figures of days, and the cell it lands in is a cell.
+
+    // when / then
+    expect(formatHours(30_000)).toBe("1,250d");
+    expect(formatHours(30_010)).toBe("1,250d 10h");
+  });
+
   it("should render an em dash for a value that is not a duration", () => {
     // given
     const cases = [Number.NaN, -1];

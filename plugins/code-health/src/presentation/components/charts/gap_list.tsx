@@ -1,4 +1,7 @@
-import { catalogEntityPath } from "@rios0rios0/backstage-plugin-code-health-common";
+import {
+  catalogEntityPath,
+  formatCount,
+} from "@rios0rios0/backstage-plugin-code-health-common";
 import Box from "@material-ui/core/Box";
 import Link from "@material-ui/core/Link";
 import Typography from "@material-ui/core/Typography";
@@ -85,7 +88,7 @@ export const GapList = ({ gaps, emptyMessage }: GapListProps) => {
 
       {gaps.remaining > 0 ? (
         <Typography variant="caption" className={classes.note} component="p">
-          and {gaps.remaining.toLocaleString()} more
+          and {formatCount(gaps.remaining)} more
         </Typography>
       ) : null}
     </Box>

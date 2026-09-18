@@ -1,3 +1,5 @@
+import { formatCount } from "./number_format";
+
 export type QualityGateStatus = "OK" | "ERROR" | "NONE";
 
 /**
@@ -34,13 +36,18 @@ export interface SonarMetrics {
  * duration. Lives here rather than beside the collector because the contributor
  * aggregation formats a summed debt with the same rules, and two copies would
  * drift.
+ *
+ * The day count is grouped. A contributor row sums the debt of every repository
+ * the person touched, and a fleet of any size runs to four figures of working
+ * days there — `2451d` is a number a reader has to count.
  */
 export const formatDebt = (minutes: number): string => {
   if (minutes <= 0) return "0min";
   const days = Math.floor(minutes / (60 * 8));
   const hours = Math.floor((minutes % (60 * 8)) / 60);
   const remainder = minutes % 60;
-  if (days > 0) return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
+  if (days > 0)
+    return hours > 0 ? `${formatCount(days)}d ${hours}h` : `${formatCount(days)}d`;
   if (hours > 0)
     return remainder > 0 ? `${hours}h ${remainder}min` : `${hours}h`;
   return `${remainder}min`;

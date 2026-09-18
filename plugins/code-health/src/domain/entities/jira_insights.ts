@@ -5,9 +5,11 @@ import type {
   RepositorySummary,
 } from "@rios0rios0/backstage-plugin-code-health-common";
 import {
+  EMPTY_JIRA_ISSUE_TYPES,
   addIssueTypeCounts,
   computeBugRatio,
-  EMPTY_JIRA_ISSUE_TYPES,
+  formatCount,
+  formatPercent,
   interactionTotal,
   meanHours,
   totalIssueTypes,
@@ -211,7 +213,7 @@ export const topJiraContributorsByResolved = (
           id: contributor.key,
           label: contributor.displayName,
           value: metrics.issuesResolved,
-          detail: `${metrics.issuesCreated} raised`,
+          detail: `${formatCount(metrics.issuesCreated)} raised`,
           entityRef: contributor.entityRef,
           avatarUrl: contributor.avatarUrl,
         },
@@ -239,7 +241,7 @@ export const topJiraContributorsByInteractions = (
           id: contributor.key,
           label: contributor.displayName,
           value: total,
-          detail: `${metrics.interactions.transitions} transitions`,
+          detail: `${formatCount(metrics.interactions.transitions)} transitions`,
           entityRef: contributor.entityRef,
           avatarUrl: contributor.avatarUrl,
         },
@@ -314,7 +316,9 @@ export const jiraOpenPriorityRanking = (
     label: name,
     value: count,
     detail:
-      grandTotal === 0 ? "" : `${Math.round((count / grandTotal) * 100)}% of the backlog`,
+      grandTotal === 0
+        ? ""
+        : `${formatPercent((count / grandTotal) * 100, 0)} of the backlog`,
     entityRef: null,
     avatarUrl: null,
   }));
@@ -339,7 +343,7 @@ export const staleJiraBacklog = (repositories: readonly RepositorySummary[]): Ga
             id: repository.id,
             label: repository.name,
             entityRef: repository.entityRef,
-            reason: `${oldest.key} · ${oldest.ageDays}d`,
+            reason: `${oldest.key} · ${formatCount(oldest.ageDays)}d`,
             ageDays: oldest.ageDays,
           },
         ];

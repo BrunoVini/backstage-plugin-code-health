@@ -27,9 +27,11 @@ import type {
   ScoreBand,
 } from "@rios0rios0/backstage-plugin-code-health-common";
 import {
+  NO_INTEGRATIONS,
   catalogEntityPath,
   computeRepositoryHealthScore,
-  NO_INTEGRATIONS,
+  formatCount,
+  formatFixed,
   parseEntityRef,
   scoreBand,
 } from "@rios0rios0/backstage-plugin-code-health-common";
@@ -647,7 +649,7 @@ const buildColumns = ({
     header: "Coverage",
     cell: ({ getValue }) => {
       const v = getValue<number | null>();
-      return <MetricCell value={v !== null ? `${v.toFixed(1)}%` : null} />;
+      return <MetricCell value={v !== null ? `${formatFixed(v)}%` : null} />;
     },
     enableColumnFilter: false,
   },
@@ -657,7 +659,7 @@ const buildColumns = ({
     header: "Dups",
     cell: ({ getValue }) => {
       const v = getValue<number | null>();
-      return <MetricCell value={v !== null ? `${v.toFixed(1)}%` : null} />;
+      return <MetricCell value={v !== null ? `${formatFixed(v)}%` : null} />;
     },
     enableColumnFilter: false,
   },
@@ -808,7 +810,8 @@ export const RepositoryTable = ({
       >
         <Box display="flex" alignItems="center" gridGap={16}>
           <Typography variant="body2" color="textSecondary">
-            {table.getFilteredRowModel().rows.length} of {totalCount} repositories
+            {formatCount(table.getFilteredRowModel().rows.length)} of{" "}
+            {formatCount(totalCount)} repositories
           </Typography>
           <FormControlLabel
             label="Archived"

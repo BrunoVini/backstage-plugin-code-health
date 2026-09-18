@@ -1,5 +1,9 @@
 import { LinearProgress, Typography, makeStyles } from "@material-ui/core";
 import type { CoverageInfo } from "@rios0rios0/backstage-plugin-code-health-common";
+import {
+  formatCount,
+  formatPercent,
+} from "@rios0rios0/backstage-plugin-code-health-common";
 
 const useStyles = makeStyles((theme) => ({
   root: { marginBottom: theme.spacing(2) },
@@ -25,13 +29,17 @@ export const BackfillProgress = ({ coverage }: BackfillProgressProps) => {
 
   const failing =
     backfill.failing > 0
-      ? ` ${backfill.failing} ${backfill.failing === 1 ? "repository is" : "repositories are"} failing to ingest.`
+      ? ` ${formatCount(backfill.failing)} ${
+          backfill.failing === 1 ? "repository is" : "repositories are"
+        } failing to ingest.`
       : "";
 
   return (
     <div className={classes.root} data-test-subj="backfillProgress">
       <Typography variant="caption" color="textSecondary" className={classes.caption}>
-        {`Collecting history: ${backfill.percent}% of the last year across ${backfill.repositories} ` +
+        {`Collecting history: ${formatPercent(backfill.percent)} of the last year across ${formatCount(
+          backfill.repositories,
+        )} ` +
           `${backfill.repositories === 1 ? "repository" : "repositories"}. ` +
           `Wider time ranges unlock as it completes.${failing}`}
       </Typography>

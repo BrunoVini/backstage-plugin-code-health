@@ -6,7 +6,12 @@ import type {
   ContributorSummary,
   RepositorySummary,
 } from "@rios0rios0/backstage-plugin-code-health-common";
-import { formatHours } from "@rios0rios0/backstage-plugin-code-health-common";
+import {
+  formatCount,
+  formatDecimal,
+  formatHours,
+  formatPercent,
+} from "@rios0rios0/backstage-plugin-code-health-common";
 import type { ReactNode } from "react";
 import { useMemo } from "react";
 import {
@@ -54,11 +59,16 @@ export interface JiraRepositoryInsightsProps {
   readonly repositories: readonly RepositorySummary[];
 }
 
-const formatCount = (value: number): string => value.toLocaleString();
+/**
+ * A nullable figure, grouped, keeping a decimal where it has one.
+ *
+ * Not {@link formatCount}: throughput is issues per week and reads `7.5`,
+ * while the open backlog beside it is a whole number of tickets.
+ */
 const formatOptional = (value: number | null): string =>
-  value === null ? "—" : value.toLocaleString();
-const formatPercent = (value: number | null): string =>
-  value === null ? "—" : `${value}%`;
+  value === null ? "—" : formatDecimal(value);
+const formatOptionalPercent = (value: number | null): string =>
+  value === null ? "—" : formatPercent(value);
 const formatDuration = (value: number | null): string =>
   value === null ? "—" : formatHours(value);
 
@@ -150,7 +160,7 @@ export const JiraFleetInsights = ({
           <Grid item xs={6} sm={4} md={2}>
             <StatTile
               label="Bug ratio"
-              value={formatPercent(stats.bugRatio)}
+              value={formatOptionalPercent(stats.bugRatio)}
               caption={`${formatCount(byType.counts.bug)} of ${formatCount(byType.total)} closed`}
               help="The share of closed work that was a defect. Matched on Jira's default type names, so a site that invented its own defect type counts as other work."
             />

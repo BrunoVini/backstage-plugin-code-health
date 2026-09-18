@@ -4,6 +4,7 @@ import type {
   ContributorSummary,
   RepositorySummary,
 } from "@rios0rios0/backstage-plugin-code-health-common";
+import { formatCount } from "@rios0rios0/backstage-plugin-code-health-common";
 import Box from "@material-ui/core/Box";
 import Divider from "@material-ui/core/Divider";
 import Grid from "@material-ui/core/Grid";
@@ -50,11 +51,9 @@ export interface ConfluenceRepositoryInsightsProps {
   readonly repositories: readonly RepositorySummary[];
 }
 
-const formatCount = (value: number): string => value.toLocaleString();
-
 /** An em dash for anything the run did not measure, never a zero. */
 const formatMeasured = (value: number | null): string =>
-  value === null ? "—" : value.toLocaleString();
+  value === null ? "—" : formatCount(value);
 
 const VIEWS_CAPTIONS: Readonly<Record<ConfluenceAnalyticsState, string>> = {
   measured: "of pages written in the window",

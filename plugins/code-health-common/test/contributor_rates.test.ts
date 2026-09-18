@@ -186,6 +186,17 @@ describe("formatRate", () => {
     expect(formatRate(20)).toBe("20");
   });
 
+  it("should group a rate past a thousand", () => {
+    // given
+    // The monthly column of the Averages card runs into five digits on an
+    // active contributor, and `76604.9` is a figure a reader counts.
+
+    // when / then
+    expect(formatRate(9313.875)).toBe("9,313.9");
+    expect(formatRate(76604.85)).toBe("76,604.9");
+    expect(formatRate(2142)).toBe("2,142");
+  });
+
   it("should say zero plainly and refuse a figure that is not one", () => {
     // given / when / then
     expect(formatRate(0)).toBe("0");

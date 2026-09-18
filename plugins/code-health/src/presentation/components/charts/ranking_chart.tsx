@@ -1,4 +1,7 @@
-import { catalogEntityPath } from "@rios0rios0/backstage-plugin-code-health-common";
+import {
+  catalogEntityPath,
+  formatDecimal,
+} from "@rios0rios0/backstage-plugin-code-health-common";
 import Avatar from "@material-ui/core/Avatar";
 import Box from "@material-ui/core/Box";
 import Link from "@material-ui/core/Link";
@@ -78,7 +81,7 @@ export interface RankingChartProps {
    * what the chart is saying.
    */
   readonly scaleMax?: number;
-  /** Renders the number. Defaults to a plain localised integer. */
+  /** Renders the number. Defaults to a grouped figure with at most one decimal. */
   readonly formatValue?: (value: number) => string;
   /**
    * Where a row's label goes, or null for plain text.
@@ -107,7 +110,7 @@ export const RankingChart = ({
   showAvatars = false,
   emptyMessage,
   scaleMax,
-  formatValue = (value) => value.toLocaleString(),
+  formatValue = (value) => formatDecimal(value),
   linkTo = (item) => (item.entityRef === null ? null : catalogEntityPath(item.entityRef)),
 }: RankingChartProps) => {
   const classes = useStyles();
