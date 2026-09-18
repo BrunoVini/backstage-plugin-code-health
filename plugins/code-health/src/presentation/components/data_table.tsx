@@ -34,8 +34,6 @@ declare module "@tanstack/react-table" {
   interface ColumnMeta<TData extends RowData, TValue> {
     filterType?: "select";
     options?: readonly (string | FilterOption)[];
-    /** The wording of the option that applies no filter. Defaults to "All". */
-    anyOptionLabel?: string;
     /** Present only to satisfy the declaration merge signature. */
     _phantom?: [TData, TValue];
   }
@@ -101,7 +99,7 @@ const ColumnFilter = <T,>({ column }: { column: Column<T, unknown> }) => {
         SelectProps={{ native: true }}
         inputProps={{ "aria-label": `Filter ${column.id}` }}
       >
-        <option value="">{meta.anyOptionLabel ?? "All"}</option>
+        <option value="">All</option>
         {meta.options
           ?.map(asFilterOption)
           // The blank value is the "any" option above, so an entry carrying it

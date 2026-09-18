@@ -1,0 +1,3 @@
+kind: 'Fixed'
+body: 'fixed the "Non-standard branch" audit and the Default Branch column reporting every repository on a fresh install as being on the wrong branch, because an unmeasured default branch arrives as the empty string rather than as null'
+time: '2026-09-18T20:09:41.804575447Z'

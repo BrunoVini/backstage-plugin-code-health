@@ -125,6 +125,26 @@ describe("RepositoryTable audit chips", () => {
     expect(visibleRepositoryNames()).toEqual(["user/legacy"]);
   });
 
+  it("should leave a repository whose branch was never measured out of the branch audit", async () => {
+    // given
+    // On a fresh install every row arrives with `defaultBranch: ""`, and the
+    // chip used to report the whole fleet as being on the wrong branch beside
+    // a "Never measured" chip saying the same rows were unmeasured.
+    await renderTable([
+      { ...RepositoryBuilder.create().withName("fresh").build(), defaultBranch: "" },
+      { ...RepositoryBuilder.create().withName("legacy").build(), defaultBranch: "master" },
+    ]);
+
+    // when / then
+    expect(auditChip("Non-standard branch")).toHaveTextContent("Non-standard branch 1");
+
+    // when
+    clickAudit("Non-standard branch");
+
+    // then
+    expect(visibleRepositoryNames()).toEqual(["user/legacy"]);
+  });
+
   it("should measure the branch against the configured expectation", async () => {
     // given
     // A fleet on `trunk` had every row flagged, which is an audit nobody reads.
@@ -326,6 +346,25 @@ describe("RepositoryTable column filters the audits do not replace", () => {
       "main",
       "master",
     ]);
+  });
+
+  it("should leave an unmeasured branch out of the options and print nothing for it", async () => {
+    // given
+    // `""` is an unmeasured branch rather than one the fleet uses, so it is
+    // neither offered nor drawn as an amber warning chip with no label in it.
+    await renderTable([
+      { ...RepositoryBuilder.create().withName("fresh").build(), defaultBranch: "" },
+      RepositoryBuilder.create().withName("modern").build(),
+    ]);
+
+    // when
+    const options = within(screen.getByLabelText("Filter defaultBranch")).getAllByRole("option");
+
+    // then
+    expect(options.map((option) => option.textContent)).toEqual(["All", "main"]);
+    expect(
+      within(screen.getByTestId("tableBody")).queryByTitle("Default branch is not 'main'"),
+    ).not.toBeInTheDocument();
   });
 
   it("should keep only the repositories defaulting to the branch that was picked", async () => {

@@ -143,6 +143,53 @@ describe("OwnedRepositoriesCard", () => {
     expect(namesInOrder()).toEqual(["billing"]);
   });
 
+  it.each([
+    ["ci", ["All", "Passing", "Failing", "No run yet", "No pipeline defined"]],
+    ["compliance", ["All", "Non-compliant", "Partial", "Compliant", "Not measured"]],
+    [
+      "documentation",
+      ["All", "TechDocs", "Unpublished", "None", "Archived", "Not measured"],
+    ],
+    ["qualityGate", ["All", "Passed", "Failed", "No Sonar project"]],
+  ])("should word the %s filter exactly as the repositories table does", async (columnId, expected) => {
+    // given
+    // The card and the repositories table render the same facts through the
+    // same `DataTable`, so a reader who filters Compliance by "Non-compliant"
+    // on the tab and clicks into a person has to find that same word here.
+    // Both read one list in `columns/filter_options.ts`; this is what catches a
+    // future edit to one of them.
+    await renderCard({ repositories: [healthy] });
+
+    // when
+    const options = within(screen.getByLabelText(`Filter ${columnId}`)).getAllByRole("option");
+
+    // then
+    expect(options.map((option) => option.textContent)).toEqual(expected);
+  });
+
+  it("should keep only the repositories with no pipeline at all", async () => {
+    // given
+    // The card gained this filter with the table, rather than staying on the
+    // four values it had while the table moved to five.
+    const noPipeline = RepositoryBuilder.create()
+      .withName("undefined-ci")
+      .withComplianceStatus({
+        pipelineExists: false,
+        buildPolicyOnPRs: false,
+        buildPolicyExpiration: false,
+        branchProtection: true,
+        color: "red",
+      })
+      .build();
+    await renderCard({ repositories: [noPipeline, healthy, unmeasured] });
+
+    // when
+    fireEvent.change(screen.getByLabelText("Filter ci"), { target: { value: "no-pipeline" } });
+
+    // then
+    expect(namesInOrder()).toEqual(["undefined-ci"]);
+  });
+
   it("should page ten at a time, so the charts below stay on the screen", async () => {
     // given
     const many = Array.from({ length: 12 }, (_, index) =>
@@ -206,11 +253,14 @@ describe("OwnedRepositoriesCard", () => {
     await renderCard({ repositories: [healthy] });
 
     // then
-    expect(screen.getByText("Passed")).toBeInTheDocument();
-    expect(screen.getByText("Passing")).toBeInTheDocument();
-    expect(screen.getByText("Compliant")).toBeInTheDocument();
-    expect(screen.getByText("TechDocs")).toBeInTheDocument();
-    expect(screen.getByText("94.0%")).toBeInTheDocument();
+    // Scoped to the body: the filter selects now carry the same words their
+    // cells do, deliberately, so a document-wide query matches both.
+    const body = within(screen.getByTestId("tableBody"));
+    expect(body.getByText("Passed")).toBeInTheDocument();
+    expect(body.getByText("Passing")).toBeInTheDocument();
+    expect(body.getByText("Compliant")).toBeInTheDocument();
+    expect(body.getByText("TechDocs")).toBeInTheDocument();
+    expect(body.getByText("94.0%")).toBeInTheDocument();
   });
 
   it("should point an unlinked account at the Identities tab", async () => {

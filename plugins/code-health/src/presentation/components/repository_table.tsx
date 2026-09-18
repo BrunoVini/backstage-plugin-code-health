@@ -45,6 +45,16 @@ import { ComplianceBadge } from "./compliance_badge";
 import { DataTable, DEFAULT_PAGE_SIZE, PaginationControls } from "./data_table";
 import { ApiExposureBadge } from "./api_exposure_badge";
 import { DocumentationBadge } from "./documentation_badge";
+import {
+  API_EXPOSURE_FILTER_OPTIONS,
+  BADGE_FILTER_OPTIONS,
+  CI_FILTER_OPTIONS,
+  COMPLIANCE_FILTER_OPTIONS,
+  DOCUMENTATION_FILTER_OPTIONS,
+  matchesCiFilter,
+  QUALITY_GATE_FILTER_OPTIONS,
+  VISIBILITY_FILTER_OPTIONS,
+} from "./columns/filter_options";
 import { confluenceRepositoryColumns } from "./columns/confluence_columns";
 import { jiraRepositoryColumns } from "./columns/jira_columns";
 import { wakaTimeRepositoryColumns } from "./columns/wakatime_columns";
@@ -155,6 +165,13 @@ const BranchesCell = ({
 
 const DefaultBranchCell = ({ branch, expected }: { branch: string; expected: string }) => {
   const classes = useBranchStyles();
+
+  // An unknown default branch arrives as `""`, because discovery does not learn
+  // one and `unsnapshotted` fills the gap. Warning on it drew an amber chip
+  // with no label in it, titled "Default branch is not 'main'" — a failure
+  // reported against a repository nothing had measured. Empty, like every
+  // other unmeasured cell in the table.
+  if (branch === "") return <EmptyCell />;
 
   if (branch !== expected) {
     return (
@@ -395,17 +412,6 @@ interface ColumnOptions {
   readonly defaultBranches: readonly string[];
 }
 
-/**
- * How every select filter words the rows no snapshot has reached.
- *
- * One wording for all of them, because it is one fact about the row rather
- * than a state of each column. The *value* behind it differs — `none` here,
- * `unknown` there — because each accessor already folded null to its own
- * sentinel, which is why offering the option was all these needed: the filter
- * matched it all along and nothing put it on screen.
- */
-const NOT_MEASURED = "Not measured";
-
 const buildColumns = ({
   expectedDefaultBranch,
   defaultBranches,
@@ -466,54 +472,18 @@ const buildColumns = ({
     accessorFn: (row) => row.ciStatus?.state ?? "NONE",
     header: "CI Status",
     cell: ({ row }) => <StatusBadge state={row.original.ciStatus?.state ?? null} />,
-    filterFn: (row, _columnId, filterValue) => {
-      if (!filterValue || filterValue === "all") return true;
-      const state = row.original.ciStatus?.state ?? null;
-      if (filterValue === "passing") return state === "SUCCESS";
-      if (filterValue === "failing") return state !== null && state !== "SUCCESS";
-      if (filterValue === "no-ci") return state === null;
-      // The precise fact, rather than the absence of a run standing in for it.
-      // `no-ci` is "nothing has run on the default branch", which is also true
-      // of a repository whose pipeline exists and only fires on a tag, or one
-      // configured this morning. `pipelineExists` is what the provider was
-      // actually asked — workflow files on GitHub, build definitions on Azure
-      // DevOps — and it was collected all along, readable only inside the
-      // compliance chip's tooltip. `=== false` so a repository nothing has
-      // snapshotted is not reported as having no pipeline.
-      if (filterValue === "no-pipeline") {
-        return row.original.complianceStatus?.pipelineExists === false;
-      }
-      return true;
-    },
-    meta: {
-      filterType: "select",
-      options: [
-        { value: "passing", label: "Passing" },
-        { value: "failing", label: "Failing" },
-        { value: "no-ci", label: "No run yet" },
-        { value: "no-pipeline", label: "No pipeline defined" },
-      ],
-    },
+    filterFn: (row, _columnId, filterValue) => matchesCiFilter(row.original, String(filterValue)),
+    meta: { filterType: "select", options: CI_FILTER_OPTIONS },
   },
   {
     id: "compliance",
     accessorFn: (row) => row.complianceStatus?.color ?? "none",
     header: "Compliance",
     cell: ({ row }) => <ComplianceBadge status={row.original.complianceStatus} />,
-    // The badge's own words. The options used to be the stored colours, so the
-    // filter said `red` while the chip one cell away said "Non-compliant" and
-    // left the reader to pair them up. "Amber or red" — the question somebody
-    // managing a fleet actually has — is a negation this select still cannot
-    // express, and is the "Non-compliant" audit above the table.
-    meta: {
-      filterType: "select",
-      options: [
-        { value: "red", label: "Non-compliant" },
-        { value: "yellow", label: "Partial" },
-        { value: "green", label: "Compliant" },
-        { value: "none", label: NOT_MEASURED },
-      ],
-    },
+    // "Amber or red" — the question somebody managing a fleet actually has — is
+    // a negation this select still cannot express, and is the "Non-compliant"
+    // audit above the table.
+    meta: { filterType: "select", options: COMPLIANCE_FILTER_OPTIONS },
     filterFn: (row, _columnId, filterValue) => {
       if (!filterValue) return true;
       return (row.original.complianceStatus?.color ?? "none") === filterValue;
@@ -524,14 +494,7 @@ const buildColumns = ({
     accessorFn: (row) => row.badgeStatus?.color ?? "none",
     header: "Badges",
     cell: ({ row }) => <BadgeStatusCell status={row.original.badgeStatus} />,
-    meta: {
-      filterType: "select",
-      options: [
-        { value: "green", label: "Complete" },
-        { value: "yellow", label: "Incomplete" },
-        { value: "none", label: NOT_MEASURED },
-      ],
-    },
+    meta: { filterType: "select", options: BADGE_FILTER_OPTIONS },
     filterFn: (row, _columnId, filterValue) => {
       if (!filterValue) return true;
       return (row.original.badgeStatus?.color ?? "none") === filterValue;
@@ -542,19 +505,7 @@ const buildColumns = ({
     accessorFn: (row) => row.documentation?.state ?? "unknown",
     header: "Docs",
     cell: ({ row }) => <DocumentationBadge status={row.original.documentation} />,
-    meta: {
-      filterType: "select",
-      // Each label is the word `DocumentationBadge` puts in the cell. A filter
-      // that invented its own wording would be the same defect as one showing
-      // the stored state name.
-      options: [
-        { value: "documented", label: "TechDocs" },
-        { value: "unpublished", label: "Unpublished" },
-        { value: "missing", label: "None" },
-        { value: "not-expected", label: "Archived" },
-        { value: "unknown", label: NOT_MEASURED },
-      ],
-    },
+    meta: { filterType: "select", options: DOCUMENTATION_FILTER_OPTIONS },
     filterFn: (row, _columnId, filterValue) => {
       if (!filterValue) return true;
       return (row.original.documentation?.state ?? "unknown") === filterValue;
@@ -565,17 +516,7 @@ const buildColumns = ({
     accessorFn: (row) => row.apiExposure?.state ?? "unknown",
     header: "API",
     cell: ({ row }) => <ApiExposureBadge exposure={row.original.apiExposure} />,
-    meta: {
-      filterType: "select",
-      // As with Docs: the words `ApiExposureBadge` renders, not a second set.
-      options: [
-        { value: "declared", label: "Declared" },
-        { value: "candidate", label: "Undeclared" },
-        { value: "expected", label: "Likely" },
-        { value: "none", label: "None" },
-        { value: "unknown", label: NOT_MEASURED },
-      ],
-    },
+    meta: { filterType: "select", options: API_EXPOSURE_FILTER_OPTIONS },
     filterFn: (row, _columnId, filterValue) => {
       if (!filterValue) return true;
       return (row.original.apiExposure?.state ?? "unknown") === filterValue;
@@ -647,13 +588,7 @@ const buildColumns = ({
           public
         </Typography>
       ),
-    meta: {
-      filterType: "select",
-      options: [
-        { value: "PUBLIC", label: "Public" },
-        { value: "PRIVATE", label: "Private" },
-      ],
-    },
+    meta: { filterType: "select", options: VISIBILITY_FILTER_OPTIONS },
     filterFn: (row, _columnId, filterValue) => {
       if (!filterValue) return true;
       return row.original.visibility === filterValue;
@@ -672,14 +607,7 @@ const buildColumns = ({
         <StateChip tone="error" label="Failed" />
       );
     },
-    meta: {
-      filterType: "select",
-      options: [
-        { value: "OK", label: "Passed" },
-        { value: "ERROR", label: "Failed" },
-        { value: "NONE", label: "No Sonar project" },
-      ],
-    },
+    meta: { filterType: "select", options: QUALITY_GATE_FILTER_OPTIONS },
     filterFn: (row, _columnId, filterValue) => {
       if (!filterValue) return true;
       return (row.original.sonarMetrics?.qualityGateStatus ?? "NONE") === filterValue;
@@ -783,7 +711,13 @@ export const RepositoryTable = ({
   // offer do not disappear as the reader narrows — a select whose options move
   // under the selection is one nobody can navigate back out of.
   const defaultBranches = useMemo(
-    () => Array.from(new Set(repositories.map((r) => r.defaultBranch))).sort(),
+    () =>
+      Array.from(
+        // `""` is an unmeasured branch rather than one the fleet uses, so it is
+        // not something to offer. The filter row drops a blank option anyway;
+        // this keeps the list honest about what it is a list of.
+        new Set(repositories.map((r) => r.defaultBranch).filter((branch) => branch !== "")),
+      ).sort(),
     [repositories],
   );
 

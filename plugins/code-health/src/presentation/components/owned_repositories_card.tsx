@@ -32,6 +32,13 @@ import {
 import { useMemo, useState } from "react";
 import { Link as RouterLink } from "react-router-dom";
 import { repositoryDetailRouteRef, rootRouteRef } from "../../routes";
+import {
+  CI_FILTER_OPTIONS,
+  COMPLIANCE_FILTER_OPTIONS,
+  DOCUMENTATION_FILTER_OPTIONS,
+  matchesCiFilter,
+  QUALITY_GATE_FILTER_OPTIONS,
+} from "./columns/filter_options";
 import { ComplianceBadge } from "./compliance_badge";
 import { DataTable, PaginationControls } from "./data_table";
 import { DocumentationBadge } from "./documentation_badge";
@@ -204,7 +211,7 @@ const columnsFor = (descending: (column: string) => boolean): ColumnDef<GradedRe
     accessorFn: (row) => row.repository.sonarMetrics?.qualityGateStatus ?? "NONE",
     header: "Quality gate",
     cell: ({ row }) => <QualityGateCell repository={row.original.repository} />,
-    meta: { filterType: "select", options: ["", "OK", "ERROR"] },
+    meta: { filterType: "select", options: QUALITY_GATE_FILTER_OPTIONS },
     filterFn: (row, _columnId, filterValue) => {
       if (!filterValue) return true;
       return (row.original.repository.sonarMetrics?.qualityGateStatus ?? "NONE") === filterValue;
@@ -265,22 +272,16 @@ const columnsFor = (descending: (column: string) => boolean): ColumnDef<GradedRe
     accessorFn: (row) => row.repository.ciStatus?.state ?? "NONE",
     header: "CI",
     cell: ({ row }) => <StatusBadge state={row.original.repository.ciStatus?.state ?? null} />,
-    filterFn: (row, _columnId, filterValue) => {
-      if (!filterValue || filterValue === "all") return true;
-      const state = row.original.repository.ciStatus?.state ?? null;
-      if (filterValue === "passing") return state === "SUCCESS";
-      if (filterValue === "failing") return state !== null && state !== "SUCCESS";
-      if (filterValue === "no-ci") return state === null;
-      return true;
-    },
-    meta: { filterType: "select", options: ["all", "passing", "failing", "no-ci"] },
+    filterFn: (row, _columnId, filterValue) =>
+      matchesCiFilter(row.original.repository, String(filterValue)),
+    meta: { filterType: "select", options: CI_FILTER_OPTIONS },
   },
   {
     id: "compliance",
     accessorFn: (row) => row.repository.complianceStatus?.color ?? "none",
     header: "Compliance",
     cell: ({ row }) => <ComplianceBadge status={row.original.repository.complianceStatus} />,
-    meta: { filterType: "select", options: ["", "green", "yellow", "red"] },
+    meta: { filterType: "select", options: COMPLIANCE_FILTER_OPTIONS },
     filterFn: (row, _columnId, filterValue) => {
       if (!filterValue) return true;
       return (row.original.repository.complianceStatus?.color ?? "none") === filterValue;
@@ -291,10 +292,7 @@ const columnsFor = (descending: (column: string) => boolean): ColumnDef<GradedRe
     accessorFn: (row) => row.repository.documentation?.state ?? "unknown",
     header: "Docs",
     cell: ({ row }) => <DocumentationBadge status={row.original.repository.documentation} />,
-    meta: {
-      filterType: "select",
-      options: ["", "documented", "unpublished", "missing", "not-expected"],
-    },
+    meta: { filterType: "select", options: DOCUMENTATION_FILTER_OPTIONS },
     filterFn: (row, _columnId, filterValue) => {
       if (!filterValue) return true;
       return (row.original.repository.documentation?.state ?? "unknown") === filterValue;

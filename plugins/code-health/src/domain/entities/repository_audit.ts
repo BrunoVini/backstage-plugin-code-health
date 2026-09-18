@@ -87,8 +87,18 @@ export const REPOSITORY_AUDITS: readonly RepositoryAudit[] = [
     label: "Non-standard branch",
     describe: ({ expectedDefaultBranch }) =>
       `The default branch is not \`${expectedDefaultBranch}\`. This is the only audit that reads a configured expectation rather than a measurement — set \`codeHealth.expectedDefaultBranch\` if the fleet standardised on something else.`,
+    // The empty string is "never measured", not "wrong". `defaultBranch` is
+    // typed `string`, but the backend folds an unknown one into `""` rather
+    // than into null: discovery does not learn a default branch, only
+    // ingestion does, and `unsnapshotted` fills the gap with `""`. Without
+    // this guard a fresh install reports its entire fleet as being on the
+    // wrong branch, on the very rows the "Never measured" chip is counting —
+    // two chips contradicting each other, with the one actionable gap buried
+    // in a count of everything. A repository whose ingestion never learned a
+    // branch, an empty one or one whose provider call failed, would stay
+    // flagged indefinitely.
     matches: (repository, { expectedDefaultBranch }) =>
-      repository.defaultBranch !== expectedDefaultBranch,
+      repository.defaultBranch !== "" && repository.defaultBranch !== expectedDefaultBranch,
   },
   {
     id: "non-compliant",

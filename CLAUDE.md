@@ -113,6 +113,7 @@ Hexagonal: `domain/` holds entities, commands and ports; `infrastructure/` holds
 | `src/presentation/pages/identities_page.tsx` | Attaching an account to a catalog `User`, and deciding whether it is measured at all — the plugin's only writes |
 | `src/presentation/components/identity_exclusion_cell.tsx` | The four reasons an account stops being measured, and the one row that can undo it |
 | `src/presentation/components/columns/` | One column-group factory per integration, called only when its flag is set |
+| `src/presentation/components/columns/filter_options.ts` | The select-filter vocabulary both repository tables read, and `matchesCiFilter` — one list rather than two that agree today |
 | `src/presentation/components/insights/` | Three card sets per integration — fleet, people, repositories — each gated on its flag; `detail_links.ts` is the one place a ranked row's link to a detail page is built |
 | `src/domain/entities/time_range.ts` | Which windows are offered, bounded by coverage — rolling ranges and calendar months |
 | `src/domain/entities/trend_range.ts` | The same two shapes for a detail page, resolving a month through the tables' own `toWindow` so one month cannot mean two windows |
@@ -351,20 +352,39 @@ The wire contract, and the pure functions both sides have to agree on.
   for an unmeasured component. That is why the `no-pipeline` audit and the CI filter's
   `no-pipeline` option both read `=== false`, and why "Never measured" is its own chip rather than
   folded into the others. On a fresh install it is the whole fleet until the first nightly pass.
+- **An unmeasured default branch is the empty string, and it is not a wrong branch.**
+  `RepositorySummary.defaultBranch` is typed `string`, but the backend folds an unknown one into
+  `""` rather than into null: `TrackedRepository.defaultBranch` starts null at discovery, only
+  `ingest_repository_history.ts` fills it in, and `unsnapshotted` in
+  `repository_summary_builder.ts` writes `repository.defaultBranch ?? ""`. Both the audit and
+  `DefaultBranchCell` therefore have to guard it. Without that, a fresh install reports its entire
+  fleet as being on the wrong branch — on the very rows the "Never measured" chip is counting, two
+  chips contradicting each other with the one actionable gap buried in a count of everything — and
+  the cell draws an amber warning chip with no label in it. A repository whose ingestion never
+  learned a branch, an empty one or one whose provider call failed, would stay flagged
+  indefinitely. `""` is also kept out of the branch filter's options, since it is not a branch the
+  fleet uses.
 - **The expected default branch is configuration, not a constant.** It is the one expectation the
   plugin holds that is a convention rather than a measurement, and `"main"` was hardcoded in
   `DefaultBranchCell` — so a fleet standardised on `master` or `trunk` had every row flagged, which
   is an audit nobody reads. `codeHealth.expectedDefaultBranch` is read by `readCodeHealthConfig`,
   threaded through `DashboardPage`, and used by both the column's warning chip and the audit, so the
   two can never disagree. A blank value falls back rather than flagging the whole fleet.
-- **A select filter reads in the words its badge uses.** `FilterOption` lets a select carry a label
-  distinct from the value it filters on, because the stored values are colours and state names: the
-  Compliance filter offered `red` and `yellow` while the chip one cell away said "Non-compliant" and
-  "Partial", leaving the reader to pair them up. Every select that can be blank also offers "Not
-  measured", which needed no new filter logic — the accessors folded null to a sentinel all along
-  and the rows were unreachable only because nothing offered them. The CI filter's literal `all`
-  option went with this: the filter row already draws a blank "All" for every column, so the select
-  was offering "All" and "all".
+- **A select filter reads in the words its badge uses, and every table reads one list.**
+  `FilterOption` lets a select carry a label distinct from the value it filters on, because the
+  stored values are colours and state names: the Compliance filter offered `red` and `yellow` while
+  the chip one cell away said "Non-compliant" and "Partial", leaving the reader to pair them up.
+  Every select that can be blank also offers "Not measured", which needed no new filter logic — the
+  accessors folded null to a sentinel all along and the rows were unreachable only because nothing
+  offered them. The CI filter's literal `all` option went with this: the filter row already draws a
+  blank "All" for every column, so the select was offering "All" and "all".
+  The lists live in `columns/filter_options.ts`, not in each table. `repository_table.tsx` and
+  `owned_repositories_card.tsx` render the same facts through the same `DataTable`, and while each
+  wrote its own options out they agreed only until one was corrected — a reader who filters
+  Compliance by "Non-compliant" on the tab and clicks into a person has to find that same word on
+  their card. `matchesCiFilter` is shared for the same reason: the duplicated predicate is the
+  shape the two drifted apart in, and each table keeping its own chain is how the card ended up
+  four values behind. The per-column wording is pinned by a test on both.
 - **The Default Branch filter is a select over the branches present, and the Owner filter is not.**
   A branch select is built from the data because free text could only find a branch the reader had
   already guessed at, and the distinct set is four or five names. Owner stays a text field: the

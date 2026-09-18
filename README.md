@@ -458,7 +458,7 @@ repositories it matches:
 | **No owner** | The catalog entity declares no `spec.owner` |
 | **No pipeline** | No workflow or build definition exists at all |
 | **No branch protection** | Nothing blocks a direct push to the default branch |
-| **Non-standard branch** | The default branch is not `codeHealth.expectedDefaultBranch` |
+| **Non-standard branch** | The default branch is not `codeHealth.expectedDefaultBranch`, and is known — a branch no snapshot has measured yet is not a wrong one |
 | **Non-compliant** | At least one of the four policy checks failed |
 | **Never measured** | No snapshot has been taken, so the policy columns are blank rather than failing |
 
@@ -488,7 +488,9 @@ guessed at — `master` if they thought to try it, never the one `develop` repos
 about. Every select that can be blank now offers **Not measured** as well, so the rows no snapshot
 has reached are reachable rather than merely visible; and the Compliance, Badges, Docs, API, CI and
 Quality Gate filters read in the words their badges use — `TechDocs`, `Unpublished`, `Likely`,
-`Non-compliant` — rather than in the colours and state names they are stored as. CI adds **No pipeline defined** beside **No run yet**: the first is the provider
+`Non-compliant` — rather than in the colours and state names they are stored as. The owned-repositories
+card on a contributor's page reads the same lists, so a filter picked on the tab is the same filter
+after clicking into a person. CI adds **No pipeline defined** beside **No run yet**: the first is the provider
 saying no definition exists, the second is nothing having run on the default branch, which is also
 true of a pipeline that only fires on a tag or one configured this morning.
 

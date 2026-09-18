@@ -139,6 +139,22 @@ describe("the non-standard branch audit", () => {
     expect(names(result)).toEqual(["legacy"]);
   });
 
+  it("should not match a repository whose default branch was never measured", () => {
+    // given
+    // `defaultBranch` is typed `string`, but the backend folds an unknown one
+    // into `""`: discovery does not learn a default branch, only ingestion
+    // does, and `unsnapshotted` fills the gap. Without the guard a fresh
+    // install reports its whole fleet as being on the wrong branch, on the very
+    // rows "Never measured" is counting.
+    const unmeasured = { ...RepositoryBuilder.create().withName("fresh").build(), defaultBranch: "" };
+
+    // when
+    const result = filterByAudits([unmeasured], ["non-standard-branch"], context);
+
+    // then
+    expect(result).toEqual([]);
+  });
+
   it("should match against the configured branch rather than always against main", () => {
     // given
     // A fleet standardised on `trunk` has to be able to say so, or the column
