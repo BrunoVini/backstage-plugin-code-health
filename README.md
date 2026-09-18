@@ -60,6 +60,7 @@ rather than showing an empty dashboard.
 - **A year of history**: pick any rolling window from the last hour to the last 365 days, today so far, or any single calendar month
 - **Two platforms**: GitHub (GraphQL) and Azure DevOps (REST), per repository rather than per instance
 - **Filtering, sorting, pagination** on every column of every table — repositories, contributors, identities and the repositories a person owns — with the page size picked once and offered everywhere, plus archived/fork toggles
+- **Audit filters for the gaps a column filter cannot express**: one click for the repositories nobody owns, the ones with no pipeline at all, the ones nothing protects the default branch of, the ones on a non-standard default branch, the ones failing any policy check, and the ones no snapshot has reached yet — each chip carrying how many repositories it matches, so the size of each problem is readable before anything is clicked
 
 ## Installation
 
@@ -402,6 +403,12 @@ codeHealth:
   # hours. A specific calendar month cannot be pinned here — it would be a fixed
   # month that goes stale the moment it passes.
   defaultRange: 'day'
+  # The branch name repositories are expected to have defaulted to. Defaults to
+  # `main`. It is what the Default Branch column's warning chip and the
+  # "Non-standard branch" audit both compare against, so the two can never
+  # disagree. A blank value falls back to the default rather than flagging the
+  # whole fleet.
+  expectedDefaultBranch: 'main'
 ```
 
 One range control, and one selection behind it. The dropdown lists the rolling ranges above under
@@ -440,6 +447,52 @@ section appears only when the backend reports that integration as configured —
 happens to carry a value, which cannot tell a switched-off integration from one that is on and has
 not collected yet — and each says for itself when it is configured and has nothing to show, so a
 reader never has to visit another tab to learn why a card is empty.
+
+### Finding the repositories that need work
+
+Above the Repositories table sits a row of **audit chips**, one per gap, each carrying how many
+repositories it matches:
+
+| Chip | What it matches |
+|---|---|
+| **No owner** | The catalog entity declares no `spec.owner` |
+| **No pipeline** | No workflow or build definition exists at all |
+| **No branch protection** | Nothing blocks a direct push to the default branch |
+| **Non-standard branch** | The default branch is not `codeHealth.expectedDefaultBranch`, and is known — a branch no snapshot has measured yet is not a wrong one |
+| **Non-compliant** | At least one of the four policy checks failed |
+| **Never measured** | No snapshot has been taken, so the policy columns are blank rather than failing |
+
+They exist because the column filters cannot express these questions. A column filter is a substring
+match or an equality select, and the four columns carrying the audit facts are exactly the ones that
+needs something else: "no owner" is the *absence* of a value, and an unowned row's owner name is the
+empty string, so no text matches only the blanks; "not `main`" is a *negation*; "non-compliant" is
+*either* of two values; and "no pipeline" was a boolean readable only inside the compliance chip's
+tooltip. The gaps were all on screen and none of them was selectable.
+
+The count is the point of the control. It says whether there is anything to do without a click, so a
+chip reading zero is a statement about the fleet worth having on screen — which is why one is drawn
+even when nothing matches, disabled rather than clickable, since selecting it could only empty the
+table. Counts are taken over the rows the table is working from, after the archived and fork toggles,
+so an archived repository nobody owns is not reported as outstanding work on a screen that is not
+showing it.
+
+Picking several chips **narrows** to the repositories that have all of them — "unowned *and*
+non-compliant" — and they compose with the column filters the same way, because every filter on the
+table narrows and two controls that disagreed about that would be unpredictable. The "N of M
+repositories" line above the table is what reports the intersection.
+
+The audits answer "which repositories have this gap"; the column filters answer "which value does
+this column have", and both are needed. The Default Branch filter is a select over the branch names
+the fleet actually uses, because a text field could only ever find a branch the reader had already
+guessed at — `master` if they thought to try it, never the one `develop` repository they did not know
+about. Every select that can be blank now offers **Not measured** as well, so the rows no snapshot
+has reached are reachable rather than merely visible; and the Compliance, Badges, Docs, API, CI and
+Quality Gate filters read in the words their badges use — `TechDocs`, `Unpublished`, `Likely`,
+`Non-compliant` — rather than in the colours and state names they are stored as. The owned-repositories
+card on a contributor's page reads the same lists, so a filter picked on the tab is the same filter
+after clicking into a person. CI adds **No pipeline defined** beside **No run yet**: the first is the provider
+saying no definition exists, the second is nothing having run on the default branch, which is also
+true of a pipeline that only fires on a tag or one configured this morning.
 
 ### Trends and scores
 

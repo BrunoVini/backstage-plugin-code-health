@@ -88,10 +88,28 @@ New files behind the trends, ownership and administration work:
 |---|---|
 | `-common` | `score.ts`, `productivity_score.ts`, `repository_health_score.ts`, `trend.ts`, `ownership.ts`, `identity_exclusion.ts`, `fleet_rates.ts`, `repository_rates.ts`; `searchDirectoryUsers` in `identity.ts` |
 | `-backend` | `domain/commands/get_contributor_trend.ts`, `get_repository_trend.ts`, `list_owned_repositories.ts`, `list_directory_users.ts`, `reset_ingestion.ts`, `authorize_administrator.ts`, `exclude_identity.ts`; `domain/entities/permissions.ts`, `bucket.ts`, `contributor_aggregation.ts`, `repository_summary_builder.ts`, `snapshot_allowances.ts`; `migrations/20260910000000_owner.js`, `migrations/20260915000000_identity_exclusions.js` |
-| frontend | `presentation/pages/contributor_detail_page.tsx`, `repository_detail_page.tsx`; `components/charts/trend_chart.tsx`, `components/score_card.tsx`, `components/trend_range_picker.tsx`, `components/owned_repositories_card.tsx`, `components/ingestion_reset_button.tsx`, `components/contributor_rates_card.tsx`, `components/repository_rates_card.tsx`, `components/rate_comparison.tsx`, `components/data_table.tsx`; `components/identity_exclusion_cell.tsx`, `components/identity_link_cell.tsx`; `hooks/use_trend_window.ts`, `hooks/use_contributor_trend.ts`, `hooks/use_owned_repositories.ts`, `hooks/use_repository_trend.ts`, `hooks/use_access.ts`, `hooks/use_directory_search.ts`; `domain/entities/contributor_trend.ts`, `domain/entities/repository_trend.ts`, `domain/entities/reset_reach.ts` |
+| frontend | `presentation/pages/contributor_detail_page.tsx`, `repository_detail_page.tsx`; `components/charts/trend_chart.tsx`, `components/score_card.tsx`, `components/trend_range_picker.tsx`, `components/owned_repositories_card.tsx`, `components/ingestion_reset_button.tsx`, `components/contributor_rates_card.tsx`, `components/repository_rates_card.tsx`, `components/rate_comparison.tsx`, `components/data_table.tsx`; `components/identity_exclusion_cell.tsx`, `components/identity_link_cell.tsx`; `hooks/use_trend_window.ts`, `hooks/use_contributor_trend.ts`, `hooks/use_owned_repositories.ts`, `hooks/use_repository_trend.ts`, `hooks/use_access.ts`, `hooks/use_directory_search.ts`; `domain/entities/contributor_trend.ts`, `domain/entities/repository_trend.ts`, `domain/entities/reset_reach.ts`, `domain/entities/repository_audit.ts`; `components/repository_audit_filters.tsx`, `components/columns/filter_options.ts` |
 
 ## Things not to change without understanding why
 
+- **An audit is for a question a column filter cannot ask.** `repository_audit.ts` holds the
+  predicates behind the chips above the repositories table; a column filter is a substring match or
+  an equality select, and absence, negation and "either of two values" are none of those. Add an
+  entry to `REPOSITORY_AUDITS` rather than a branch anywhere else — the dispatch is a lookup by id.
+  The chips intersect, like every other filter on the table, and they change the table's `data`
+  rather than TanStack's filter state, which is why the page index is reset by hand.
+- **A missing `complianceStatus` is never a failing one.** `pipelineExists === false` is a
+  measurement; `complianceStatus === null` is the absence of one, and a repository no snapshot has
+  reached has an unknown pipeline rather than a missing one. That is what the `unmeasured` audit is
+  for. The same rule is why the CI filter's `no-pipeline` reads `=== false`, and why both the branch
+  audit and `DefaultBranchCell` guard `defaultBranch === ""` — the backend folds an unmeasured
+  branch into the empty string, so a fresh install would otherwise report its whole fleet as being
+  on the wrong branch.
+- **The select-filter vocabulary is one list, in `columns/filter_options.ts`.** `repository_table.tsx`
+  and `owned_repositories_card.tsx` render the same facts through the same `DataTable`; while each
+  wrote its own option lists out they agreed only until one was corrected. `matchesCiFilter` is
+  shared for the same reason. Every label is the word the column's own badge renders, and a test on
+  both tables pins the wording.
 - **Repositories come from the catalog only.** Nothing is enumerated from a provider API. Listing an
   organisation on every dashboard load is what caused the Azure DevOps throttling this design fixes.
 - **Every provider request goes through `ProviderGateway`.** It bounds concurrency and total

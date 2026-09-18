@@ -13,6 +13,17 @@ import { RepositoryBuilder } from "../../builders/repository_builder";
 const render = (ui: React.ReactElement) =>
   renderInTestApp(ui, { mountedRoutes: { "/": rootRouteRef } });
 
+/**
+ * The table's own cells, without the filter row or the audit chips.
+ *
+ * Both of those now carry the same words and numbers the cells do — the
+ * Compliance filter says "Compliant" because the badge beside it does, the
+ * branch filter lists `master` because a row defaults to it, and every audit
+ * chip carries a count — so a document-wide text query matches more than one
+ * node. An assertion about a cell has to say it means a cell.
+ */
+const inBody = () => within(screen.getByTestId("tableBody"));
+
 describe("RepositoryTable", () => {
   it("should link the repository name to its page in the plugin", async () => {
     // given
@@ -464,7 +475,7 @@ describe("RepositoryTable", () => {
     await render(<RepositoryTable repositories={repos} totalCount={1} isLoading={false} />);
 
     // then
-    expect(screen.getByText("Passed")).toBeInTheDocument();
+    expect(inBody().getByText("Passed")).toBeInTheDocument();
   });
 
   it("should highlight a default branch that is not 'main'", async () => {
@@ -477,7 +488,7 @@ describe("RepositoryTable", () => {
     await render(<RepositoryTable repositories={repos} totalCount={1} isLoading={false} />);
 
     // then
-    const branch = screen.getByText("master");
+    const branch = inBody().getByText("master");
     expect(branch.closest("[title]")?.getAttribute("title")).toBe("Default branch is not 'main'");
   });
 
@@ -526,7 +537,7 @@ describe("RepositoryTable", () => {
       },
     ];
     await render(<RepositoryTable repositories={repos} totalCount={1} isLoading={false} />);
-    fireEvent.click(screen.getByText("1"));
+    fireEvent.click(inBody().getByText("1"));
 
     // when
     fireEvent.click(screen.getByTestId("branches-overlay"));
@@ -543,7 +554,7 @@ describe("RepositoryTable", () => {
     await render(<RepositoryTable repositories={repos} totalCount={1} isLoading={false} />);
 
     // when
-    fireEvent.click(screen.getByText("0"));
+    fireEvent.click(inBody().getByText("0"));
 
     // then
     expect(screen.getByText("No extra branches")).toBeInTheDocument();
@@ -568,7 +579,7 @@ describe("RepositoryTable", () => {
     await render(<RepositoryTable repositories={repos} totalCount={1} isLoading={false} />);
 
     // then
-    expect(screen.getByText("Compliant")).toBeInTheDocument();
+    expect(inBody().getByText("Compliant")).toBeInTheDocument();
   });
 
   it("should render the badge status cell when badge data is available", async () => {
@@ -587,7 +598,7 @@ describe("RepositoryTable", () => {
     await render(<RepositoryTable repositories={repos} totalCount={1} isLoading={false} />);
 
     // then
-    expect(screen.getByText("Complete")).toBeInTheDocument();
+    expect(inBody().getByText("Complete")).toBeInTheDocument();
   });
 
   it("should filter rows through a column filter", async () => {
@@ -666,6 +677,6 @@ describe("RepositoryTable", () => {
     await render(<RepositoryTable repositories={repos} totalCount={1} isLoading={false} />);
 
     // then
-    expect(screen.getByText("Failed")).toBeInTheDocument();
+    expect(inBody().getByText("Failed")).toBeInTheDocument();
   });
 });

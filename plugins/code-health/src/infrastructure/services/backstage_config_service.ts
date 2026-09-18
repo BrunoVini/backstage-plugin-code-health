@@ -12,7 +12,9 @@ const isRangeId = (value: string | undefined): value is TimeRangeId =>
  *
  * An unrecognised value falls back to the default rather than throwing: a typo
  * in `app-config.yaml` should leave the dashboard working, not replace it with
- * an error page.
+ * an error page. A branch name that is blank or only spaces is such a typo —
+ * an empty expectation would flag every repository in the fleet — so it falls
+ * back too rather than being taken literally.
  */
 export const readCodeHealthConfig = (configApi: ConfigApi): CodeHealthConfig => {
   const config = configApi.getOptionalConfig("codeHealth");
@@ -20,6 +22,7 @@ export const readCodeHealthConfig = (configApi: ConfigApi): CodeHealthConfig => 
 
   const refreshIntervalMs = config.getOptionalNumber("refreshIntervalMs");
   const defaultRange = config.getOptionalString("defaultRange");
+  const expectedDefaultBranch = config.getOptionalString("expectedDefaultBranch")?.trim();
 
   return {
     refreshIntervalMs:
@@ -27,5 +30,9 @@ export const readCodeHealthConfig = (configApi: ConfigApi): CodeHealthConfig => 
     defaultRange: isRangeId(defaultRange)
       ? defaultRange
       : DEFAULT_CODE_HEALTH_CONFIG.defaultRange,
+    expectedDefaultBranch:
+      expectedDefaultBranch !== undefined && expectedDefaultBranch !== ""
+        ? expectedDefaultBranch
+        : DEFAULT_CODE_HEALTH_CONFIG.expectedDefaultBranch,
   };
 };

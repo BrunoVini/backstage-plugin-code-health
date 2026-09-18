@@ -1,0 +1,3 @@
+kind: 'Changed'
+body: 'changed every select filter to read in the words its badge uses rather than the colour or state name it is stored as, offered "Not measured" wherever a column can be blank, made the Default Branch filter a select over the branches the fleet actually uses, and added "No pipeline defined" beside "No run yet" on the CI filter'
+time: '2026-09-18T19:52:39.741706338Z'

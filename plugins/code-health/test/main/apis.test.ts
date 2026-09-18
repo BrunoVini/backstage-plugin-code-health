@@ -78,6 +78,7 @@ describe("codeHealthApis", () => {
       new StubConfigApi({
         "codeHealth.refreshIntervalMs": 60000,
         "codeHealth.defaultRange": "week",
+        "codeHealth.expectedDefaultBranch": "trunk",
       }),
     );
 
@@ -85,7 +86,11 @@ describe("codeHealthApis", () => {
     const config = codeHealthConfigApiFactory.factory({ configApi });
 
     // then
-    expect(config).toEqual({ refreshIntervalMs: 60000, defaultRange: "week" });
+    expect(config).toEqual({
+      refreshIntervalMs: 60000,
+      defaultRange: "week",
+      expectedDefaultBranch: "trunk",
+    });
   });
 
   it("should fall back to the defaults when nothing is configured", () => {
@@ -96,7 +101,39 @@ describe("codeHealthApis", () => {
     const config = codeHealthConfigApiFactory.factory({ configApi });
 
     // then
-    expect(config).toEqual({ refreshIntervalMs: null, defaultRange: "day" });
+    expect(config).toEqual({
+      refreshIntervalMs: null,
+      defaultRange: "day",
+      expectedDefaultBranch: "main",
+    });
+  });
+
+  it("should trim the expected default branch", () => {
+    // given
+    const configApi = asConfigApi(
+      new StubConfigApi({ "codeHealth.expectedDefaultBranch": "  master  " }),
+    );
+
+    // when
+    const config = codeHealthConfigApiFactory.factory({ configApi });
+
+    // then
+    expect(config.expectedDefaultBranch).toBe("master");
+  });
+
+  it("should ignore a blank expected default branch", () => {
+    // given
+    // An empty expectation would flag every repository in the fleet, which is
+    // an audit nobody reads — so it is a typo, not an instruction.
+    const configApi = asConfigApi(
+      new StubConfigApi({ "codeHealth.expectedDefaultBranch": "   " }),
+    );
+
+    // when
+    const config = codeHealthConfigApiFactory.factory({ configApi });
+
+    // then
+    expect(config.expectedDefaultBranch).toBe("main");
   });
 
   it("should ignore a range nobody can select", () => {
