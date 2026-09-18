@@ -1,3 +1,0 @@
-kind: 'Added'
-body: 'added audit filters above the repositories table for the gaps a column filter cannot express: repositories with no owner, no pipeline at all, no branch protection, a non-standard default branch, any failed policy check, or no snapshot yet — each chip carrying how many repositories it matches'
-time: '2026-09-18T19:52:39.736807902Z'

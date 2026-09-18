@@ -13,6 +13,23 @@ nothing.
 
 ## [Unreleased]
 
+## [5.2.0] - 2026-09-18
+
+### Added
+
+- added `codeHealth.expectedDefaultBranch` so the Default Branch warning and its audit measure against the branch the fleet standardised on rather than always against `main`
+- added audit filters above the repositories table for the gaps a column filter cannot express: repositories with no owner, no pipeline at all, no branch protection, a non-standard default branch, any failed policy check, or no snapshot yet — each chip carrying how many repositories it matches
+
+### Changed
+
+- changed every select filter to read in the words its badge uses rather than the colour or state name it is stored as, offered "Not measured" wherever a column can be blank, made the Default Branch filter a select over the branches the fleet actually uses, and added "No pipeline defined" beside "No run yet" on the CI filter
+- changed the owned-repositories card on a contributor's page to read the same select-filter wording and the same CI predicate as the repositories table, from one shared list, so a filter picked on the tab is the same filter after clicking into a person
+
+### Fixed
+
+- fixed every figure on the dashboard reading without thousands separators, which made the five-digit monthly column of the Averages card a counting exercise rather than a comparison; one `formatCount` / `formatDecimal` / `formatFixed` / `formatPercent` in the common package now spells every count, rate, percentage and duration the plugin prints, in a pinned locale so the backend and the browser cannot disagree about the same figure
+- fixed the "Non-standard branch" audit and the Default Branch column reporting every repository on a fresh install as being on the wrong branch, because an unmeasured default branch arrives as the empty string rather than as null
+
 ## [5.1.0] - 2026-09-18
 
 ### Added
