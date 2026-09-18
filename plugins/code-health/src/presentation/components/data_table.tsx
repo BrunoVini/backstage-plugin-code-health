@@ -15,14 +15,34 @@ import { makeStyles } from "@material-ui/core/styles";
 import type { Column, RowData, Table as TanstackTable } from "@tanstack/react-table";
 import { flexRender } from "@tanstack/react-table";
 
+/**
+ * One entry of a select filter, when the value the filter function compares is
+ * not what a reader should be reading.
+ *
+ * A bare string is still accepted and shows itself, which is right for a
+ * branch name or a language. It is wrong for everything whose stored value is
+ * a colour or a state name: the Compliance filter offered `red` and `yellow`
+ * while the chip beside it said "Non-compliant" and "Partial", leaving the
+ * reader to work out that they were the same two things.
+ */
+export interface FilterOption {
+  readonly value: string;
+  readonly label: string;
+}
+
 declare module "@tanstack/react-table" {
   interface ColumnMeta<TData extends RowData, TValue> {
     filterType?: "select";
-    options?: readonly string[];
+    options?: readonly (string | FilterOption)[];
+    /** The wording of the option that applies no filter. Defaults to "All". */
+    anyOptionLabel?: string;
     /** Present only to satisfy the declaration merge signature. */
     _phantom?: [TData, TValue];
   }
 }
+
+const asFilterOption = (option: string | FilterOption): FilterOption =>
+  typeof option === "string" ? { value: option, label: option } : option;
 
 /**
  * The page sizes every table offers, and the one it opens with.
@@ -81,12 +101,17 @@ const ColumnFilter = <T,>({ column }: { column: Column<T, unknown> }) => {
         SelectProps={{ native: true }}
         inputProps={{ "aria-label": `Filter ${column.id}` }}
       >
-        <option value="">All</option>
-        {meta.options?.filter(Boolean).map((option) => (
-          <option key={option} value={option}>
-            {option}
-          </option>
-        ))}
+        <option value="">{meta.anyOptionLabel ?? "All"}</option>
+        {meta.options
+          ?.map(asFilterOption)
+          // The blank value is the "any" option above, so an entry carrying it
+          // would draw a second one.
+          .filter((option) => option.value !== "")
+          .map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
       </TextField>
     );
   }
@@ -222,7 +247,12 @@ export const DataTable = <T,>({
             </Fragment>
           ))}
         </TableHead>
-        <TableBody>
+        {/* Named so an assertion about a cell can say it means a cell. Several
+            filter selects carry the same words their column's cells do — a
+            branch name, "Passed", "Compliant" — because the filter says what
+            the badge beside it says, and a document-wide text query matches
+            both. */}
+        <TableBody data-testid="tableBody">
           {isLoading
             ? Array.from({ length: skeletonRows }, (_, rowIndex) => (
                 <TableRow key={rowIndex} data-testid="loadingRow">

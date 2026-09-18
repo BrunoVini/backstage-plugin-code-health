@@ -108,6 +108,7 @@ export const DashboardPage = ({
         totalCount={repositories.length}
         isLoading={isLoading}
         capabilities={capabilities}
+        expectedDefaultBranch={config.expectedDefaultBranch}
       />
     </>
   );

@@ -46,6 +46,14 @@ const selectFilter = (columnId: string, value: string) =>
 /** The name is the first cell; the owner and health columns follow it. */
 const NAME_COLUMN = 0;
 
+/**
+ * The table's own cells, without the filter row or the audit chips.
+ *
+ * Several filters carry the same words their column's cells do — "Passed"
+ * because the gate badge says it — so a document-wide query matches both.
+ */
+const inBody = () => within(screen.getByTestId("tableBody"));
+
 const visibleRepositoryNames = (): string[] =>
   screen
     .getAllByRole("row")
@@ -103,8 +111,11 @@ describe("RepositoryTable column filters", () => {
     expect(names).not.toContain("green");
   });
 
-  it("should keep every repository when the CI filter is reset to 'all'", async () => {
+  it("should keep every repository when the CI filter is cleared", async () => {
     // given
+    // The select used to carry a literal `all` option beside the blank one the
+    // filter row draws for every column, so it offered "All" and "all". The
+    // blank is the only one now.
     await renderTable([
       RepositoryBuilder.create().withName("green").withCiStatus("SUCCESS").build(),
       RepositoryBuilder.create().withName("none").build(),
@@ -112,7 +123,7 @@ describe("RepositoryTable column filters", () => {
     selectFilter("ciStatus", "passing");
 
     // when
-    selectFilter("ciStatus", "all");
+    selectFilter("ciStatus", "");
 
     // then
     expect(visibleRepositoryNames()).toHaveLength(2);
@@ -233,8 +244,8 @@ describe("RepositoryTable quality gate cell", () => {
     await renderTable([RepositoryBuilder.create().withName("unmeasured").build()]);
 
     // then
-    expect(screen.queryByText("Passed")).not.toBeInTheDocument();
-    expect(screen.queryByText("Failed")).not.toBeInTheDocument();
+    expect(inBody().queryByText("Passed")).not.toBeInTheDocument();
+    expect(inBody().queryByText("Failed")).not.toBeInTheDocument();
   });
 });
 

@@ -38,5 +38,22 @@ export interface Config {
       | 'month'
       | 'quarter'
       | 'year';
+
+    /**
+     * The branch name repositories are expected to have defaulted to.
+     * Defaults to `main`.
+     *
+     * This is the one expectation the plugin holds that is a convention rather
+     * than a measurement, so it is the one that has to be settable: on a fleet
+     * standardised on `master` or `trunk` the built-in default flags every
+     * repository, and the Default Branch column's warning then says nothing.
+     *
+     * It is what the column's warning chip and the "Non-standard branch" audit
+     * both compare against, so the two can never disagree. A blank value falls
+     * back to the default rather than flagging the whole fleet.
+     *
+     * @visibility frontend
+     */
+    expectedDefaultBranch?: string;
   };
 }

@@ -34,7 +34,10 @@ import {
   scoreBand,
 } from "@rios0rios0/backstage-plugin-code-health-common";
 import { Link as RouterLink } from "react-router-dom";
+import { DEFAULT_EXPECTED_BRANCH } from "../../domain/entities/code_health_config";
 import type { StatusTone } from "../../domain/entities/insights";
+import type { RepositoryAuditId } from "../../domain/entities/repository_audit";
+import { countAuditMatches, filterByAudits } from "../../domain/entities/repository_audit";
 import { repositoryDetailRouteRef } from "../../routes";
 import { useChartPalette } from "./charts/chart_palette";
 import { BadgeStatusCell } from "./badge_status_cell";
@@ -46,6 +49,7 @@ import { confluenceRepositoryColumns } from "./columns/confluence_columns";
 import { jiraRepositoryColumns } from "./columns/jira_columns";
 import { wakaTimeRepositoryColumns } from "./columns/wakatime_columns";
 import { EmptyCell } from "./empty_cell";
+import { RepositoryAuditFilters } from "./repository_audit_filters";
 import { StateChip } from "./state_chip";
 import { StatusBadge } from "./status_badge";
 
@@ -55,6 +59,15 @@ interface RepositoryTableProps {
   isLoading: boolean;
   /** Which integrations the backend was configured with. */
   capabilities?: IntegrationCapabilities;
+  /**
+   * The branch name a repository is expected to have defaulted to, from
+   * `codeHealth.expectedDefaultBranch`.
+   *
+   * Defaulted here as well as in the config reader so a caller embedding the
+   * table — and every test that does not care — gets the same expectation the
+   * dashboard has rather than an empty one, which would flag the whole fleet.
+   */
+  expectedDefaultBranch?: string;
 }
 
 const formatRelativeDate = (dateString: string): string => {
@@ -140,12 +153,17 @@ const BranchesCell = ({
   );
 };
 
-const DefaultBranchCell = ({ branch }: { branch: string }) => {
+const DefaultBranchCell = ({ branch, expected }: { branch: string; expected: string }) => {
   const classes = useBranchStyles();
-  const isNonStandard = branch !== "main";
 
-  if (isNonStandard) {
-    return <StateChip tone="warning" label={branch} title="Default branch is not 'main'" />;
+  if (branch !== expected) {
+    return (
+      <StateChip
+        tone="warning"
+        label={branch}
+        title={`Default branch is not '${expected}'`}
+      />
+    );
   }
 
   return (
@@ -362,7 +380,36 @@ const HealthScoreCell = ({ score }: { score: RepositoryHealthScore }) => {
  */
 const UNMEASURED_HEALTH = -1;
 
-const columns: ColumnDef<RepositorySummary>[] = [
+/**
+ * What the columns need from the data and the configuration before they can be
+ * built.
+ *
+ * The Default Branch column reads both: the cell warns against the configured
+ * expectation, and its filter offers the branch names the fleet actually uses
+ * rather than a field to type one into. Nobody can filter for `trunk` without
+ * first knowing some repository defaults to it, which is exactly what a select
+ * built from the data says and a text box does not.
+ */
+interface ColumnOptions {
+  readonly expectedDefaultBranch: string;
+  readonly defaultBranches: readonly string[];
+}
+
+/**
+ * How every select filter words the rows no snapshot has reached.
+ *
+ * One wording for all of them, because it is one fact about the row rather
+ * than a state of each column. The *value* behind it differs — `none` here,
+ * `unknown` there — because each accessor already folded null to its own
+ * sentinel, which is why offering the option was all these needed: the filter
+ * matched it all along and nothing put it on screen.
+ */
+const NOT_MEASURED = "Not measured";
+
+const buildColumns = ({
+  expectedDefaultBranch,
+  defaultBranches,
+}: ColumnOptions): ColumnDef<RepositorySummary>[] => [
   {
     accessorKey: "fullName",
     header: "Repository",
@@ -391,8 +438,19 @@ const columns: ColumnDef<RepositorySummary>[] = [
   {
     accessorKey: "defaultBranch",
     header: "Default Branch",
-    cell: ({ getValue }) => <DefaultBranchCell branch={getValue<string>()} />,
-    filterFn: "includesString",
+    cell: ({ getValue }) => (
+      <DefaultBranchCell branch={getValue<string>()} expected={expectedDefaultBranch} />
+    ),
+    // A select over the branches present, not a text field. Free text could
+    // only find a branch the reader had already guessed at — `master` if they
+    // thought to try it, never the one `develop` repository they did not know
+    // about. "Not `main`" is the same question asked the other way round and
+    // is the "Non-standard branch" audit above the table.
+    meta: { filterType: "select", options: defaultBranches },
+    filterFn: (row, _columnId, filterValue) => {
+      if (!filterValue) return true;
+      return row.original.defaultBranch === filterValue;
+    },
   },
   {
     id: "branches",
@@ -414,16 +472,48 @@ const columns: ColumnDef<RepositorySummary>[] = [
       if (filterValue === "passing") return state === "SUCCESS";
       if (filterValue === "failing") return state !== null && state !== "SUCCESS";
       if (filterValue === "no-ci") return state === null;
+      // The precise fact, rather than the absence of a run standing in for it.
+      // `no-ci` is "nothing has run on the default branch", which is also true
+      // of a repository whose pipeline exists and only fires on a tag, or one
+      // configured this morning. `pipelineExists` is what the provider was
+      // actually asked — workflow files on GitHub, build definitions on Azure
+      // DevOps — and it was collected all along, readable only inside the
+      // compliance chip's tooltip. `=== false` so a repository nothing has
+      // snapshotted is not reported as having no pipeline.
+      if (filterValue === "no-pipeline") {
+        return row.original.complianceStatus?.pipelineExists === false;
+      }
       return true;
     },
-    meta: { filterType: "select", options: ["all", "passing", "failing", "no-ci"] },
+    meta: {
+      filterType: "select",
+      options: [
+        { value: "passing", label: "Passing" },
+        { value: "failing", label: "Failing" },
+        { value: "no-ci", label: "No run yet" },
+        { value: "no-pipeline", label: "No pipeline defined" },
+      ],
+    },
   },
   {
     id: "compliance",
     accessorFn: (row) => row.complianceStatus?.color ?? "none",
     header: "Compliance",
     cell: ({ row }) => <ComplianceBadge status={row.original.complianceStatus} />,
-    meta: { filterType: "select", options: ["", "green", "yellow", "red"] },
+    // The badge's own words. The options used to be the stored colours, so the
+    // filter said `red` while the chip one cell away said "Non-compliant" and
+    // left the reader to pair them up. "Amber or red" — the question somebody
+    // managing a fleet actually has — is a negation this select still cannot
+    // express, and is the "Non-compliant" audit above the table.
+    meta: {
+      filterType: "select",
+      options: [
+        { value: "red", label: "Non-compliant" },
+        { value: "yellow", label: "Partial" },
+        { value: "green", label: "Compliant" },
+        { value: "none", label: NOT_MEASURED },
+      ],
+    },
     filterFn: (row, _columnId, filterValue) => {
       if (!filterValue) return true;
       return (row.original.complianceStatus?.color ?? "none") === filterValue;
@@ -434,7 +524,14 @@ const columns: ColumnDef<RepositorySummary>[] = [
     accessorFn: (row) => row.badgeStatus?.color ?? "none",
     header: "Badges",
     cell: ({ row }) => <BadgeStatusCell status={row.original.badgeStatus} />,
-    meta: { filterType: "select", options: ["", "green", "yellow"] },
+    meta: {
+      filterType: "select",
+      options: [
+        { value: "green", label: "Complete" },
+        { value: "yellow", label: "Incomplete" },
+        { value: "none", label: NOT_MEASURED },
+      ],
+    },
     filterFn: (row, _columnId, filterValue) => {
       if (!filterValue) return true;
       return (row.original.badgeStatus?.color ?? "none") === filterValue;
@@ -447,7 +544,16 @@ const columns: ColumnDef<RepositorySummary>[] = [
     cell: ({ row }) => <DocumentationBadge status={row.original.documentation} />,
     meta: {
       filterType: "select",
-      options: ["", "documented", "unpublished", "missing", "not-expected"],
+      // Each label is the word `DocumentationBadge` puts in the cell. A filter
+      // that invented its own wording would be the same defect as one showing
+      // the stored state name.
+      options: [
+        { value: "documented", label: "TechDocs" },
+        { value: "unpublished", label: "Unpublished" },
+        { value: "missing", label: "None" },
+        { value: "not-expected", label: "Archived" },
+        { value: "unknown", label: NOT_MEASURED },
+      ],
     },
     filterFn: (row, _columnId, filterValue) => {
       if (!filterValue) return true;
@@ -461,7 +567,14 @@ const columns: ColumnDef<RepositorySummary>[] = [
     cell: ({ row }) => <ApiExposureBadge exposure={row.original.apiExposure} />,
     meta: {
       filterType: "select",
-      options: ["", "declared", "candidate", "expected", "none"],
+      // As with Docs: the words `ApiExposureBadge` renders, not a second set.
+      options: [
+        { value: "declared", label: "Declared" },
+        { value: "candidate", label: "Undeclared" },
+        { value: "expected", label: "Likely" },
+        { value: "none", label: "None" },
+        { value: "unknown", label: NOT_MEASURED },
+      ],
     },
     filterFn: (row, _columnId, filterValue) => {
       if (!filterValue) return true;
@@ -534,7 +647,13 @@ const columns: ColumnDef<RepositorySummary>[] = [
           public
         </Typography>
       ),
-    meta: { filterType: "select", options: ["", "PUBLIC", "PRIVATE"] },
+    meta: {
+      filterType: "select",
+      options: [
+        { value: "PUBLIC", label: "Public" },
+        { value: "PRIVATE", label: "Private" },
+      ],
+    },
     filterFn: (row, _columnId, filterValue) => {
       if (!filterValue) return true;
       return row.original.visibility === filterValue;
@@ -553,7 +672,14 @@ const columns: ColumnDef<RepositorySummary>[] = [
         <StateChip tone="error" label="Failed" />
       );
     },
-    meta: { filterType: "select", options: ["", "OK", "ERROR"] },
+    meta: {
+      filterType: "select",
+      options: [
+        { value: "OK", label: "Passed" },
+        { value: "ERROR", label: "Failed" },
+        { value: "NONE", label: "No Sonar project" },
+      ],
+    },
     filterFn: (row, _columnId, filterValue) => {
       if (!filterValue) return true;
       return (row.original.sonarMetrics?.qualityGateStatus ?? "NONE") === filterValue;
@@ -621,27 +747,60 @@ export const RepositoryTable = ({
   totalCount,
   isLoading,
   capabilities = NO_INTEGRATIONS,
+  expectedDefaultBranch = DEFAULT_EXPECTED_BRANCH,
 }: RepositoryTableProps) => {
   const [sorting, setSorting] = useState<SortingState>([{ id: "fullName", desc: false }]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [showArchived, setShowArchived] = useState(false);
   const [showForks, setShowForks] = useState(false);
+  const [audits, setAudits] = useState<readonly RepositoryAuditId[]>([]);
 
-  const filteredData = useMemo(() => {
+  const auditContext = useMemo(
+    () => ({ expectedDefaultBranch }),
+    [expectedDefaultBranch],
+  );
+
+  // The two toggles come first, so an archived repository nobody owns is not
+  // counted as an ownership gap on a screen that is not showing it.
+  const included = useMemo(() => {
     let data = repositories;
     if (!showArchived) data = data.filter((r) => !r.isArchived);
     if (!showForks) data = data.filter((r) => !r.isFork);
     return data;
   }, [repositories, showArchived, showForks]);
 
+  const auditCounts = useMemo(
+    () => countAuditMatches(included, auditContext),
+    [included, auditContext],
+  );
+
+  const filteredData = useMemo(
+    () => filterByAudits(included, audits, auditContext),
+    [included, audits, auditContext],
+  );
+
+  // Built from every row rather than from the filtered ones, so the branches on
+  // offer do not disappear as the reader narrows — a select whose options move
+  // under the selection is one nobody can navigate back out of.
+  const defaultBranches = useMemo(
+    () => Array.from(new Set(repositories.map((r) => r.defaultBranch))).sort(),
+    [repositories],
+  );
+
   const allColumns = useMemo(
     () => [
-      ...columns,
+      ...buildColumns({ expectedDefaultBranch, defaultBranches }),
       ...(capabilities.wakatime ? wakaTimeRepositoryColumns() : []),
       ...(capabilities.jira ? jiraRepositoryColumns() : []),
       ...(capabilities.confluence ? confluenceRepositoryColumns() : []),
     ],
-    [capabilities.wakatime, capabilities.jira, capabilities.confluence],
+    [
+      expectedDefaultBranch,
+      defaultBranches,
+      capabilities.wakatime,
+      capabilities.jira,
+      capabilities.confluence,
+    ],
   );
 
   const table = useReactTable({
@@ -657,6 +816,31 @@ export const RepositoryTable = ({
     initialState: { pagination: { pageSize: DEFAULT_PAGE_SIZE } },
   });
 
+  /**
+   * Narrowing sends the reader back to the first page.
+   *
+   * These filters change `data` rather than TanStack's own column filter
+   * state, so nothing resets the page index for them: a reader on page three
+   * who ticks an audit matching four repositories would otherwise be left
+   * looking at an empty table with "3 / 1" under it.
+   */
+  const resetPage = useCallback(() => table.setPageIndex(0), [table]);
+
+  const toggleAudit = useCallback(
+    (id: RepositoryAuditId) => {
+      setAudits((current) =>
+        current.includes(id) ? current.filter((entry) => entry !== id) : [...current, id],
+      );
+      resetPage();
+    },
+    [resetPage],
+  );
+
+  const clearAudits = useCallback(() => {
+    setAudits([]);
+    resetPage();
+  }, [resetPage]);
+
   if (!isLoading && repositories.length === 0) {
     return (
       <Box py={6} textAlign="center">
@@ -667,6 +851,19 @@ export const RepositoryTable = ({
 
   return (
     <>
+      {/* Above the count, because it is the control that decides what the count
+          is counting, and because it is the one filter a reader scanning a
+          fleet is looking for before they read a single row. */}
+      <Box mb={1}>
+        <RepositoryAuditFilters
+          counts={auditCounts}
+          selected={audits}
+          context={auditContext}
+          onToggle={toggleAudit}
+          onClear={clearAudits}
+        />
+      </Box>
+
       <Box
         display="flex"
         alignItems="center"
