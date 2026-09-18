@@ -1,3 +1,0 @@
-kind: 'Changed'
-body: 'changed the **Identities** listing and the **Owned repositories** card to render through the same table as the other tabs, so both sort on every column, filter, and page — the card ten rows at a time, worst health first, with a repository nothing has measured after the measured ones whichever way a column is turned'
-time: '2026-09-16T23:07:42.454913887Z'

@@ -1,3 +1,0 @@
-kind: 'Added'
-body: 'added a page-size selector to every table — repositories, contributors, identities and the repositories a person owns — and made the pagination controls visible on one page or ten. They used to appear only past the first page, which on any fleet with more repositories than people read as "the repositories table paginates and the contributors table does not", and left nobody a way to ask for a shorter page; the sizes are one shared list, so a size picked on one table is on offer on the next'
-time: '2026-09-16T23:07:42.446831908Z'

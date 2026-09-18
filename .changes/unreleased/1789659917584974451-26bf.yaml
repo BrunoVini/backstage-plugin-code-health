@@ -1,3 +1,0 @@
-kind: 'Fixed'
-body: 'fixed the Jira trailing window on a repository''s page — in the Jira delivery card and the Averages card — reading one day past its end: the window stops at the start of tomorrow, which is not a day it holds, and both captions now name the last day it covers. `lastCoveredDayOf` in `@rios0rios0/backstage-plugin-code-health-common` is the one rule, the same one the backend reads snapshots by'
-time: '2026-09-17T15:45:17.584894572Z'

@@ -1,3 +1,0 @@
-kind: 'Fixed'
-body: 'fixed a Confluence space annotated or configured by the key an administrator renamed it to — the alias its URL shows — being measured as empty: the spaces API resolves the alias but CQL matches only the original key, and the lookup was indexed by the original alone, so every count ran against a key CQL did not know, with nothing said. Every query is now built from the key Confluence reports, the `spaceKeys` allow-list is matched by space rather than by spelling, and an annotation Confluence lists no space for is logged with the entities that carry it'
-time: '2026-09-17T23:07:56.147132103Z'

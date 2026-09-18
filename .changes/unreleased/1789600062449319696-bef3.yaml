@@ -1,3 +1,0 @@
-kind: 'Added'
-body: 'added a searching picker to the **Identities** tab for linking an account to a catalog user: it opens on the row''s likely matches and, as somebody types, searches the directory by name, address or entity name through the new `GET /v1/identities/users?q=` route, so a link is a pick rather than a `user:default/…` reference spelled out. The field still accepts a reference typed or pasted whole, and the Link button enables only once there is something linkable to send'
-time: '2026-09-16T23:07:42.449271382Z'

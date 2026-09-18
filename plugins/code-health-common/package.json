@@ -1,6 +1,6 @@
 {
   "name": "@rios0rios0/backstage-plugin-code-health-common",
-  "version": "5.0.0",
+  "version": "5.1.0",
   "description": "Wire contract and shared pure helpers for the Code Health Backstage plugin, used by both its frontend and its backend",
   "license": "MIT",
   "main": "src/index.ts",

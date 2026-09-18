@@ -1,3 +1,0 @@
-kind: 'Changed'
-body: 'changed the **Averages** card on a person''s detail page to print the team''s average under every figure and to say, in a new column, how far above or below it the person sits — "25% above the team", "40% below the team", or "level with the team". The team is the same people the productivity score is read against, sent by the backend beside the score as `GetContributorTrendResponse.fleet` so the two cannot disagree; a mean taken over nobody prints an em dash rather than a zero, and a frontend against an older backend prints the figures alone and says no average was sent'
-time: '2026-09-16T23:07:42.453055003Z'

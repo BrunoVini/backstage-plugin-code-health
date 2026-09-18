@@ -1,3 +1,0 @@
-kind: 'Fixed'
-body: 'fixed a link made to a reference that names something other than a user — `group:default/platform`, say — being stored as a user reference built from the group''s name. `LinkIdentity` now refuses any kind but `user` with a 400, the catalog reader skips any entity that is not a `User` when it looks references up, and the picker on the **Identities** tab keeps the Link button disabled for such a reference'
-time: '2026-09-17T15:45:17.592489615Z'

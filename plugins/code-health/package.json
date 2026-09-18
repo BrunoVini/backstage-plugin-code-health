@@ -1,6 +1,6 @@
 {
   "name": "@rios0rios0/backstage-plugin-code-health",
-  "version": "5.0.0",
+  "version": "5.1.0",
   "description": "Backstage frontend plugin that shows CI status, releases, tags, compliance checks and contributor metrics for every GitHub and Azure DevOps repository",
   "license": "MIT",
   "main": "src/index.ts",
@@ -64,7 +64,7 @@
     "@material-ui/core": "^4.12.4",
     "@material-ui/icons": "^4.11.3",
     "@material-ui/lab": "4.0.0-alpha.61",
-    "@rios0rios0/backstage-plugin-code-health-common": "^5.0.0",
+    "@rios0rios0/backstage-plugin-code-health-common": "^5.1.0",
     "@tanstack/react-table": "^8.21.3"
   },
   "//peerDependencies": "`react-router-dom` spans both majors on purpose: the plugin never imports it, but every `@backstage/*` package it depends on peers on `^6.30.2`, so pinning `^7` alone would make a stock Backstage app report an unsatisfiable peer.",
