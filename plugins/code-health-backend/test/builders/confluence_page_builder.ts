@@ -176,7 +176,10 @@ export const aSpacesResponse = (
   spaces: readonly {
     readonly id: string | number;
     readonly key: string;
-    /** The key the space answers to now, after an administrator changed it. */
+    /**
+     * The key the space answers to now, after an administrator changed it —
+     * emitted under the name the v2 schema gives it, `currentActiveAlias`.
+     */
     readonly alias?: string;
     readonly name?: string;
     readonly homepageId?: string | number;
@@ -186,7 +189,7 @@ export const aSpacesResponse = (
   results: spaces.map((space) => ({
     id: space.id,
     key: space.key,
-    ...(space.alias === undefined ? {} : { alias: space.alias }),
+    ...(space.alias === undefined ? {} : { currentActiveAlias: space.alias }),
     name: space.name ?? `${space.key} space`,
     type: "global",
     ...(space.homepageId === undefined ? {} : { homepageId: space.homepageId }),

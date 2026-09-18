@@ -162,6 +162,8 @@ describe("readCodeHealthSettings", () => {
     expect(settings.wakaTime.requestBudgetPerRun).toBe(500);
     expect(settings.jira.requestBudgetPerRun).toBe(500);
     expect(settings.confluence.requestBudgetPerRun).toBe(2700);
+    // The space reports are paid per annotated space, apart from the sweep.
+    expect(settings.confluence.requestBudgetPerSpace).toBe(40);
   });
 
   it("should read each integration's request allowance from its own block", () => {
@@ -171,7 +173,7 @@ describe("readCodeHealthSettings", () => {
         wakaTime: { requestBudgetPerRun: 120 },
         atlassian: {
           jira: { requestBudgetPerRun: 80 },
-          confluence: { requestBudgetPerRun: 4000 },
+          confluence: { requestBudgetPerRun: 4000, requestBudgetPerSpace: 60 },
         },
       },
     });
@@ -180,6 +182,7 @@ describe("readCodeHealthSettings", () => {
     expect(settings.wakaTime.requestBudgetPerRun).toBe(120);
     expect(settings.jira.requestBudgetPerRun).toBe(80);
     expect(settings.confluence.requestBudgetPerRun).toBe(4000);
+    expect(settings.confluence.requestBudgetPerSpace).toBe(60);
   });
 
   it("should reject a non-positive integration allowance", () => {
@@ -189,7 +192,10 @@ describe("readCodeHealthSettings", () => {
     const settings = read({
       codeHealth: {
         wakaTime: { requestBudgetPerRun: 0 },
-        atlassian: { jira: { requestBudgetPerRun: -5 }, confluence: { requestBudgetPerRun: 0 } },
+        atlassian: {
+          jira: { requestBudgetPerRun: -5 },
+          confluence: { requestBudgetPerRun: 0, requestBudgetPerSpace: 0 },
+        },
       },
     });
 
@@ -197,6 +203,7 @@ describe("readCodeHealthSettings", () => {
     expect(settings.wakaTime.requestBudgetPerRun).toBe(500);
     expect(settings.jira.requestBudgetPerRun).toBe(500);
     expect(settings.confluence.requestBudgetPerRun).toBe(2700);
+    expect(settings.confluence.requestBudgetPerSpace).toBe(40);
   });
 
   it("should read the Atlassian collection settings", () => {

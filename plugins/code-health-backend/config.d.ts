@@ -396,22 +396,43 @@ export interface Config {
         maxAnalyticsLookups?: number;
 
         /**
-         * Requests one snapshot pass may spend on Confluence. Defaults to
-         * what the three caps above can need — 2,700: one version history for
-         * each of 500 pages, up to twelve bodies for each of 150 pages
-         * measured for volume, 200 analytics lookups, and 200 for the sweeps
-         * that find the pages and the counts behind a few spaces' reports —
-         * so a walk the caps allow is never cut short. Lower it and the caps
-         * become nominal: a run stops at the allowance and keeps what it had.
+         * Requests one snapshot pass may spend on the Confluence contributor
+         * sweep — the walks the three caps above bound. Defaults to what
+         * those caps can need — 2,700: one version history for each of 500
+         * pages, up to twelve bodies for each of 150 pages measured for
+         * volume, 200 analytics lookups, and 200 for the searches that find
+         * the pages and the space and account-name lookups — so a walk the
+         * caps allow is never cut short. Lower it and the caps become
+         * nominal: a run stops at the allowance and keeps what it had.
          *
          * An allowance of its own rather than a share of
          * `ingestion.requestBudgetPerRun`. The sweep used to draw on that one
          * before a single repository was captured, and one moderately large
-         * space could leave the repository loop with nothing.
+         * space could leave the repository loop with nothing. The per-space
+         * reports do not draw on it either; see `requestBudgetPerSpace`.
          *
          * @visibility backend
          */
         requestBudgetPerRun?: number;
+
+        /**
+         * Requests one snapshot pass may spend on each annotated space's
+         * report, pooled over every space a `confluence.io/space-key`
+         * annotation names. Defaults to 40, which is what one space can cost
+         * at the default `maxResultsPerRun`: seven counts and two ordered
+         * lookups, up to twenty pages of the window's changed items and up to
+         * eight of the parent walk; a quiet space costs about a dozen.
+         *
+         * Per space rather than a share of `requestBudgetPerRun`, because the
+         * reports' cost scales with the annotation count and a flat number
+         * does not: on one allowance twenty annotated spaces would spend what
+         * the caps were sized for before the contributor sweep began, and
+         * every person's documentation figures would then under-report as a
+         * measured low rather than as unmeasured.
+         *
+         * @visibility backend
+         */
+        requestBudgetPerSpace?: number;
       };
     };
   };

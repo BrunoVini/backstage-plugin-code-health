@@ -470,18 +470,30 @@ describe("parseSpacePage", () => {
     // given
     // An administrator changed the key: the site's links, and so the
     // annotation somebody copies from them, say DATA, while CQL still knows
-    // the space as DS.
+    // the space as DS. The v2 schema reports it as `currentActiveAlias`.
     const body = aSpacesResponse([{ id: 77, key: "DS", alias: "DATA", name: "Data" }]);
 
     // when
     const page = parseSpacePage(body);
 
     // then
+    expect(body).toMatchObject({ results: [{ currentActiveAlias: "DATA" }] });
     expect(page.results[0]).toMatchObject({
       key: "DS",
       alias: "DATA",
       url: `${CONFLUENCE_BASE}/spaces/DATA`,
     });
+  });
+
+  it("should read a bare alias field too, so either shape of the answer resolves", () => {
+    // given
+    const body = { results: [{ id: 77, key: "DS", alias: "DATA" }] };
+
+    // when
+    const page = parseSpacePage(body);
+
+    // then
+    expect(page.results[0]?.alias).toBe("DATA");
   });
 
   it("should drop a space with no key, which nothing could be scoped to", () => {

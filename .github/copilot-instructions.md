@@ -246,7 +246,8 @@ New files behind the trends, ownership and administration work:
   `CLAUDE.md` > Release.
 - **The snapshot pass gives every source a request allowance of its own** (`SnapshotAllowances`):
   the repository loop and Sonar spend `ingestion.requestBudgetPerRun`, and WakaTime, Jira and
-  Confluence each spend the `requestBudgetPerRun` in their own block. Do not put them back on one
+  Confluence each spend the `requestBudgetPerRun` in their own block — Confluence's space reports
+  spend `requestBudgetPerSpace` per annotated space on top. Do not put them back on one
   budget — the enrichers used to spend it before the first repository was captured, and one large
   Confluence space starved the loop for the same repositories every night. The loop takes the
   never-captured and oldest-captured repositories first (`listLatestSnapshotDays`), runs before the

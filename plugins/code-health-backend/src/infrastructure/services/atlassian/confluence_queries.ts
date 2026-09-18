@@ -91,7 +91,12 @@ export interface ConfluenceSpace {
    * annotation is only ever used to look it up.
    */
   readonly key: string;
-  /** The key the space answers to now, when an administrator changed it. */
+  /**
+   * The key the space answers to now, when an administrator changed it.
+   *
+   * The v2 space schema names it `currentActiveAlias`; the parser reads a bare
+   * `alias` as well, so a response in either shape resolves.
+   */
   readonly alias: string | null;
   readonly name: string | null;
   readonly url: string | null;
@@ -464,7 +469,7 @@ export const parseSpacePage = (body: unknown): ConfluenceSpacePage => {
         {
           id,
           key,
-          alias: asString(at(entry, "alias")),
+          alias: asString(at(entry, "currentActiveAlias")) ?? asString(at(entry, "alias")),
           name: asString(at(entry, "name")),
           url: absolute(base, asString(at(entry, "_links", "webui"))),
           homepageId: asId(at(entry, "homepageId")),

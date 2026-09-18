@@ -51,6 +51,7 @@ describe("SnapshotAllowances", () => {
       wakatime: 0,
       jira: 1,
       confluence: 0,
+      "confluence-spaces": 0,
     });
   });
 
@@ -77,6 +78,9 @@ describe("SnapshotAllowances", () => {
     expect(SNAPSHOT_ALLOWANCE_SETTINGS.sonar).toBe(SNAPSHOT_ALLOWANCE_SETTINGS.repositories);
     expect(SNAPSHOT_ALLOWANCE_SETTINGS.confluence).toBe(
       "codeHealth.atlassian.confluence.requestBudgetPerRun",
+    );
+    expect(SNAPSHOT_ALLOWANCE_SETTINGS["confluence-spaces"]).toBe(
+      "codeHealth.atlassian.confluence.requestBudgetPerSpace",
     );
   });
 });

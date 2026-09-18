@@ -1,7 +1,19 @@
 import { RequestBudget } from "./request_budget";
 
-/** Everything a snapshot pass spends provider requests on. */
-export type SnapshotSource = "repositories" | "sonar" | "wakatime" | "jira" | "confluence";
+/**
+ * Everything a snapshot pass spends provider requests on.
+ *
+ * Confluence is two sources, because it is two sweeps whose costs scale with
+ * different things: the contributor sweep with the configured page caps, the
+ * per-space reports with how many spaces the catalog names.
+ */
+export type SnapshotSource =
+  | "repositories"
+  | "sonar"
+  | "wakatime"
+  | "jira"
+  | "confluence"
+  | "confluence-spaces";
 
 export const SNAPSHOT_SOURCES: readonly SnapshotSource[] = [
   "repositories",
@@ -9,6 +21,7 @@ export const SNAPSHOT_SOURCES: readonly SnapshotSource[] = [
   "wakatime",
   "jira",
   "confluence",
+  "confluence-spaces",
 ];
 
 /** How each source is named in a log line. */
@@ -17,7 +30,8 @@ export const SNAPSHOT_SOURCE_LABELS: Readonly<Record<SnapshotSource, string>> = 
   sonar: "Sonar",
   wakatime: "WakaTime",
   jira: "Jira",
-  confluence: "Confluence",
+  confluence: "The Confluence contributor sweep",
+  "confluence-spaces": "The Confluence space sweep",
 };
 
 /**
@@ -35,6 +49,7 @@ export const SNAPSHOT_ALLOWANCE_SETTINGS: Readonly<Record<SnapshotSource, string
   wakatime: "codeHealth.wakaTime.requestBudgetPerRun",
   jira: "codeHealth.atlassian.jira.requestBudgetPerRun",
   confluence: "codeHealth.atlassian.confluence.requestBudgetPerRun",
+  "confluence-spaces": "codeHealth.atlassian.confluence.requestBudgetPerSpace",
 };
 
 /**

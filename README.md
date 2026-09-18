@@ -238,11 +238,14 @@ codeHealth:
       requestBudgetPerRun: 500
     confluence:
       enabled: true
-      # Confluence's own allowance per snapshot pass. The default is what its
-      # page caps can need — 500 version histories, up to twelve bodies for
-      # each of 150 pages measured for volume, 200 analytics lookups and 200
-      # for the sweeps — so a walk the caps allow is never cut short.
+      # The contributor sweep's own allowance per snapshot pass. The default is
+      # what its page caps can need — 500 version histories, up to twelve
+      # bodies for each of 150 pages measured for volume, 200 analytics lookups
+      # and 200 for the searches — so a walk the caps allow is never cut short.
       requestBudgetPerRun: 2700
+      # What each annotated space's report may spend, pooled over every space
+      # the catalog names, since the reports' cost scales with that count.
+      requestBudgetPerSpace: 40
 ```
 
 Each integration spends its own allowance during the snapshot pass, and the repository loop — the
@@ -633,7 +636,7 @@ failing, and the instant every repository has data through.
 The snapshot pass ends with one line saying what each source spent of its own allowance:
 
 ```
-snapshot pass finished: captured 190 of 190 repositories, 0 failures, 41 WakaTime members; requests spent: repositories=412 sonar=190 wakatime=43 jira=62 confluence=1204
+snapshot pass finished: captured 190 of 190 repositories, 0 failures, 41 WakaTime members; requests spent: repositories=412 sonar=190 wakatime=43 jira=62 confluence=1204 confluence-spaces=118
 ```
 
 It warns, naming the setting to raise, when it left repositories unvisited (they go first on the next

@@ -160,12 +160,14 @@ class StubWakaTimeEnricher implements WakaTimeEnricher {
   }
 }
 
-const REQUEST_BUDGETS = { wakaTime: 500, jira: 500, confluence: 500 };
+const REQUEST_BUDGETS = { wakaTime: 500, jira: 500, confluence: 500, confluencePerSpace: 40 };
 
 const createCommand = async (options: {
   repositories?: number;
   /** Given to every repository, so the Sonar enricher is asked about each. */
   sonarProjectKey?: string;
+  /** Confluence space keys, handed out to the repositories in turn. */
+  confluenceSpaceKeys?: readonly string[];
   collector?: StubVcsCollector;
   sonar?: SonarEnricher | null;
   wakaTime?: WakaTimeEnricher | null;
@@ -181,9 +183,11 @@ const createCommand = async (options: {
 
   await store.syncRepositories({
     discovered: Array.from({ length: options.repositories ?? 1 }, (_unused, index) => {
-      const builder = DiscoveredRepositoryBuilder.create().withEntityRef(
-        `component:default/repo-${index}`,
-      );
+      const spaces = options.confluenceSpaceKeys ?? [];
+      const spaceKey = spaces.length === 0 ? null : (spaces[index % spaces.length] ?? null);
+      const builder = DiscoveredRepositoryBuilder.create()
+        .withEntityRef(`component:default/repo-${index}`)
+        .withCatalogFacts({ confluenceSpaceKey: spaceKey });
       return options.sonarProjectKey === undefined
         ? builder.build()
         : builder.withSonarProjectKey(options.sonarProjectKey).build();
@@ -570,9 +574,52 @@ describe("CaptureRepositorySnapshots", () => {
     expect(result.requestsBySource).toMatchObject({ repositories: 6, confluence: 20, jira: 30 });
     expect(result.starvedSources).toEqual(["jira", "confluence"]);
     const warnings = logger.at("warn").join("\n");
-    expect(warnings).toContain("Confluence spent its whole allowance of 20 requests");
+    expect(warnings).toContain(
+      "The Confluence contributor sweep spent its whole allowance of 20 requests",
+    );
     expect(warnings).toContain("codeHealth.atlassian.confluence.requestBudgetPerRun");
     expect(warnings).toContain("codeHealth.atlassian.jira.requestBudgetPerRun");
+  });
+
+  it("should pay for the Confluence space reports per annotated space, apart from the contributor sweep", async () => {
+    // given
+    // The reports' cost scales with the annotation count and the contributor
+    // sweep's with its page caps. On one allowance, enough annotated spaces
+    // spent what the caps were sized for before the sweep began, and every
+    // person's figures then under-reported as a measured low.
+    const confluence = new StubConfluenceEnricher(1_000);
+    const { command, logger } = await createCommand({
+      repositories: 4,
+      confluenceSpaceKeys: ["ENG", "ops", "OPS"],
+      confluence,
+      requestBudgets: { confluence: 30, confluencePerSpace: 5 },
+    });
+
+    // when
+    const result = await command.run({ now: NOW });
+
+    // then
+    // Two distinct spaces however the annotations spell them, five each.
+    expect(result.requestsBySource).toMatchObject({ "confluence-spaces": 10, confluence: 30 });
+    expect(result.starvedSources).toEqual(["confluence", "confluence-spaces"]);
+    const warnings = logger.at("warn").join("\n");
+    expect(warnings).toContain(
+      "The Confluence space sweep spent its whole allowance of 10 requests (5 for each of 2 annotated spaces)",
+    );
+    expect(warnings).toContain("codeHealth.atlassian.confluence.requestBudgetPerSpace");
+  });
+
+  it("should give the Confluence space sweep nothing to report on when nothing names a space", async () => {
+    // given
+    const confluence = new StubConfluenceEnricher(1);
+    const { command, logger } = await createCommand({ repositories: 2, confluence });
+
+    // when
+    const result = await command.run({ now: NOW });
+
+    // then
+    expect(result.starvedSources).toEqual([]);
+    expect(logger.at("info").join(" ")).not.toContain("confluence-spaces");
   });
 
   it("should say what each source spent, by name", async () => {
@@ -602,6 +649,7 @@ describe("CaptureRepositorySnapshots", () => {
       wakatime: 0,
       jira: 8,
       confluence: 0,
+      "confluence-spaces": 0,
     });
     expect(result.requestsSpent).toBe(17);
     expect(logger.at("info").join(" ")).toContain(

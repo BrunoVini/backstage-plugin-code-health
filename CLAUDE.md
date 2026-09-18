@@ -203,7 +203,11 @@ The wire contract, and the pure functions both sides have to agree on.
   every night. `SnapshotAllowances` hands the loop and Sonar `ingestion.requestBudgetPerRun` and each
   integration its own `requestBudgetPerRun` (`codeHealth.wakaTime`, `codeHealth.atlassian.jira`,
   `codeHealth.atlassian.confluence`); Confluence's default is derived from its caps (2,700) so the
-  caps are reachable rather than nominal. The completion line says what each source spent by name,
+  caps are reachable rather than nominal. Confluence is two allowances, because its two sweeps' costs
+  scale with different things: the per-space reports spend `requestBudgetPerSpace` (40) for each
+  space the catalog names, pooled, since their cost scales with the annotation count and a flat
+  number sized for the contributor sweep's caps would be spent by twenty annotated spaces before that
+  sweep began. The completion line says what each source spent by name,
   and the pass warns — naming the setting — when it left repositories unvisited, when Sonar could not
   be asked about some, or when an integration was *refused* a request. Refused rather than
   exhausted, because an allowance spent to the unit finished, and telling an operator to raise a
@@ -222,8 +226,11 @@ The wire contract, and the pure functions both sides have to agree on.
   count, because a null on a repository that has a project reads as "no project" everywhere else.
 - **A Confluence space is queried by the key it was created with, whichever key the annotation or
   `spaceKeys` uses.** Confluence Cloud lets an administrator change a space's key; the new one is the
-  space's `alias`, it is what the URL shows and so what gets copied into an annotation, and the
-  spaces API resolves it — but CQL matches only the original. `resolveSpaces` indexes each answer
+  space's alias (`currentActiveAlias` in the v2 schema; the parser reads a bare `alias` too), it is
+  what the URL shows and so what gets copied into an annotation, and the spaces API resolves it —
+  but CQL matches only the original. Whether `keys=` really resolves an alias is the one half of this
+  not verifiable from the contract; `docs/confluence.md` lists it among the behaviours to watch on a
+  first deployment, and the warning below is its symptom. `resolveSpaces` indexes each answer
   under both keys, every query is built from `keyFor`, and the allow-list is matched by space id
   rather than by spelling. Before this the lookup was indexed by the original key alone, so it missed
   every alias and each count then ran against a key CQL did not know and reported a quiet quarter,

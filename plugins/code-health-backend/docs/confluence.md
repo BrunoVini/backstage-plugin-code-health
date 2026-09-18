@@ -29,9 +29,12 @@ codeHealth:
       maxPagesPerRun: 500
       maxPagesForVolume: 150
       maxAnalyticsLookups: 200
-      # Confluence's own allowance per snapshot pass; the default is what the
-      # three caps above can need.
+      # The contributor sweep's own allowance per snapshot pass; the default
+      # is what the three caps above can need.
       requestBudgetPerRun: 2700
+      # What each annotated space's report may spend, pooled over the spaces
+      # the catalog names.
+      requestBudgetPerSpace: 40
 ```
 
 `baseUrl` is the *site*, not the wiki. Confluence Cloud hangs off a `/wiki` context path on the same
@@ -258,16 +261,22 @@ Per run, roughly:
 | Each space | ten, plus one per 100 changed items and one per 250 pages for the parent walk |
 
 Everything goes through the shared provider gateway, so it shares the concurrency cap, retry policy
-and circuit breaker with version control. The request allowance is Confluence's own —
-`requestBudgetPerRun` — and nothing else in the snapshot pass draws on it. The sweep used to spend
-the repository loop's budget, before a single repository was captured, and one moderately large space
-could leave the loop with nothing; now a large space costs the pass its Confluence figures and nothing
-else. The default is derived from the caps above so the two cannot disagree: one version history for
-each of 500 pages, up to twelve bodies for each of 150 pages measured for volume, 200 analytics
-lookups, and 200 for the sweeps that find the pages and the counts behind a few spaces' reports —
-2,700. A run that exhausts its allowance keeps what it collected and logs that it stopped early — a
-partial window is a real measurement of its own days — and the snapshot pass warns, naming the
-setting.
+and circuit breaker with version control. The request allowances are Confluence's own, and nothing
+else in the snapshot pass draws on them. The sweeps used to spend the repository loop's budget, before
+a single repository was captured, and one moderately large space could leave the loop with nothing;
+now a large space costs the pass its Confluence figures and nothing else.
+
+There are two, because the two sweeps' costs scale with different things. The contributor sweep
+spends `requestBudgetPerRun`, whose default is derived from the caps above so the two cannot
+disagree: one version history for each of 500 pages, up to twelve bodies for each of 150 pages
+measured for volume, 200 analytics lookups, and 200 for the searches that find the pages and the
+space and account-name lookups — 2,700. The per-space reports spend `requestBudgetPerSpace` for each
+space the catalog names, pooled, because their cost scales with the annotation count and a flat
+number does not: twenty annotated spaces on one allowance would spend what the caps were sized for
+before the contributor sweep began, and every person's figures would under-report as a measured low.
+Forty is what one space can cost at the default `maxResultsPerRun`; a quiet one costs about a dozen.
+A sweep that exhausts its allowance keeps what it collected and logs that it stopped early — a partial
+window is a real measurement of its own days — and the snapshot pass warns, naming the setting.
 
 ## Verified against the API contract, not against a live site
 
@@ -282,6 +291,12 @@ watching on a first deployment:
 - whether `GET /wiki/rest/api/search` honours `expand=content.history,content.version,content.space`
   (without it there is no creator, and pages would be attributed to their last editor);
 - whether `GET /wiki/rest/api/user/bulk` is available on your site (a cosmetic lookup; failing it only
-  leaves an account listed by id).
+  leaves an account listed by id);
+- whether `GET /wiki/api/v2/spaces?keys=` resolves a renamed space by its alias and reports the
+  original under `key` with the alias under `currentActiveAlias` (the parser reads a bare `alias`
+  too). If `keys` matches original keys only, a space annotated by its alias is not found and every
+  query for it runs against a key CQL does not know.
 
-Each has a visible symptom in the logs at `debug`, and none of them fails a run.
+The first three have a visible symptom in the logs at `debug`; the fourth is the one where a wrong
+guess would reproduce the bug it fixes rather than degrade visibly, so it is logged at `warn` — "lists
+no space with the key …" for a space the annotation names by its alias. None of them fails a run.

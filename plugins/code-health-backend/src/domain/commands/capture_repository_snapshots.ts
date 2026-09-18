@@ -73,16 +73,38 @@ export interface CaptureRepositorySnapshotsOptions {
    * given more than it needs costs nothing, and a source given less stops on
    * its own and touches nothing else — which is the property one shared budget
    * could not offer.
+   *
+   * Confluence is two allowances: `confluence` for the contributor sweep, and
+   * `confluencePerSpace` for each space the catalog names, pooled over the
+   * per-space reports. Their costs scale with different things, and one number
+   * sized for the sweep's caps would be spent by the reports on a fleet with
+   * enough annotated spaces.
    */
   readonly requestBudgets: {
     readonly wakaTime: number;
     readonly jira: number;
     readonly confluence: number;
+    readonly confluencePerSpace: number;
   };
   readonly identities: IdentityObserver;
   readonly settings: IngestionSettings;
   readonly logger: LoggerService;
 }
+
+/**
+ * How many spaces the catalog names, however the annotations spell them.
+ *
+ * An upper bound on what the Confluence space sweep will measure — an
+ * allow-list may drop some — which is the right side to size an allowance
+ * from.
+ */
+const countAnnotatedSpaces = (repositories: readonly TrackedRepository[]): number =>
+  new Set(
+    repositories.flatMap((repository) => {
+      const key = repository.catalogFacts.confluenceSpaceKey;
+      return key === null ? [] : [key.toLowerCase()];
+    }),
+  ).size;
 
 /**
  * Captures each repository's current state once a day.
@@ -107,7 +129,9 @@ export interface CaptureRepositorySnapshotsOptions {
  * shared: a Confluence sweep that walks five hundred version histories should
  * time out having stored the day's snapshots rather than before the first one.
  * Only the per-repository figures Jira and Confluence contribute go ahead of
- * the loop, because they ride on the snapshot row itself.
+ * the loop, because they ride on the snapshot row itself — and the Confluence
+ * ones spend an allowance sized per annotated space, so what sits ahead of
+ * the loop is bounded by the annotation count rather than by the sweep's caps.
  *
  * The pass shares one project cache across repositories, which is what turns
  * Azure DevOps branch policies from a per-repository download into a
@@ -119,6 +143,10 @@ export class CaptureRepositorySnapshots {
   async run(input: { now: Date; signal?: AbortSignal }): Promise<SnapshotRunResult> {
     const { store, settings, logger, sonar, wakaTime, jira, confluence } = this.options;
 
+    const tracked = await this.staleFirst(await store.listTrackedRepositories());
+    const repositories = tracked.map((entry) => entry.repository);
+    const annotatedSpaces = confluence === null ? 0 : countAnnotatedSpaces(repositories);
+
     const allowances = new SnapshotAllowances({
       repositories: settings.requestBudgetPerRun,
       // Sonar is asked once per repository the loop reaches, and the loop
@@ -128,6 +156,12 @@ export class CaptureRepositorySnapshots {
       ...(wakaTime === null ? {} : { wakatime: this.options.requestBudgets.wakaTime }),
       ...(jira === null ? {} : { jira: this.options.requestBudgets.jira }),
       ...(confluence === null ? {} : { confluence: this.options.requestBudgets.confluence }),
+      // Sized by how many spaces the catalog names, because that is what the
+      // reports' cost scales with. With none annotated the sweep asks nothing,
+      // so there is nothing to give it or to report on.
+      ...(annotatedSpaces === 0
+        ? {}
+        : { "confluence-spaces": annotatedSpaces * this.options.requestBudgets.confluencePerSpace }),
     });
     const contextFor = (source: SnapshotSource): EnrichmentContext => ({
       budget: allowances.budgetFor(source),
@@ -148,9 +182,6 @@ export class CaptureRepositorySnapshots {
     let sonarSkipped = 0;
     let budgetExhausted = false;
 
-    const tracked = await this.staleFirst(await store.listTrackedRepositories());
-    const repositories = tracked.map((entry) => entry.repository);
-
     // Both per-repository sweeps run once for the whole pass: a project or a
     // space is named by several repositories, and asking per repository would
     // multiply one answer by the repository count.
@@ -158,7 +189,7 @@ export class CaptureRepositorySnapshots {
       jira?.fetchRepositories(repositories, jiraContext),
     );
     const confluenceByRepository = await this.repositoryMetrics("Confluence", () =>
-      confluence?.fetchRepositories(repositories, confluenceContext),
+      confluence?.fetchRepositories(repositories, contextFor("confluence-spaces")),
     );
 
     let visited = 0;
@@ -272,9 +303,14 @@ export class CaptureRepositorySnapshots {
       // The two above are said in terms of what they cost, which is the useful
       // way to say it; the enrichers stop on their own and keep what they had.
       if (source === "repositories" || source === "sonar") continue;
+      const sizing =
+        source === "confluence-spaces"
+          ? ` (${this.options.requestBudgets.confluencePerSpace} for each of ` +
+            `${annotatedSpaces} annotated spaces)`
+          : "";
       logger.warn(
         `${SNAPSHOT_SOURCE_LABELS[source]} spent its whole allowance of ` +
-          `${allowances.budgetFor(source).limit} requests and stopped early; ` +
+          `${allowances.budgetFor(source).limit} requests${sizing} and stopped early; ` +
           `raise ${SNAPSHOT_ALLOWANCE_SETTINGS[source]} to measure more`,
       );
     }

@@ -286,6 +286,7 @@ export const codeHealthPlugin = createBackendPlugin({
             wakaTime: settings.wakaTime.requestBudgetPerRun,
             jira: settings.jira.requestBudgetPerRun,
             confluence: settings.confluence.requestBudgetPerRun,
+            confluencePerSpace: settings.confluence.requestBudgetPerSpace,
           },
           identities: identityObserver,
           settings: settings.ingestion,

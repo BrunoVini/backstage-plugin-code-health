@@ -19,11 +19,16 @@
  * rather than truncating it into an under-count that would look exactly like a
  * quiet quarter.
  *
- * The request allowance sits underneath all three. It is Confluence's own,
- * drawn on by nothing else in the snapshot pass, and its default is what the
- * default caps can need — so the caps are reachable rather than nominal, and
- * a walk the caps allow is never cut short by an allowance that was sized for
- * something else.
+ * Two request allowances sit underneath. The contributor sweep — the walks the
+ * three caps bound — spends `requestBudgetPerRun`, whose default is what the
+ * default caps can need, so the caps are reachable rather than nominal. The
+ * per-space reports spend `requestBudgetPerSpace` for each space the catalog
+ * names, because their cost scales with the annotation count and nothing in a
+ * flat number does: on one shared allowance twenty annotated spaces would eat
+ * what the caps were sized for before the contributor sweep began, and every
+ * person's figures would then under-report as a measured low rather than as
+ * unmeasured. Neither draws on the other, and nothing else in the snapshot
+ * pass draws on either.
  */
 export interface ConfluenceSettings {
   /** Days without an edit after which a page counts as stale. */
@@ -34,8 +39,10 @@ export interface ConfluenceSettings {
   readonly maxPagesForVolume: number;
   /** Pages a run will ask the analytics API about. Premium sites only. */
   readonly maxAnalyticsLookups: number;
-  /** Requests one snapshot pass may spend on Confluence, on an allowance of its own. */
+  /** Requests one snapshot pass may spend on the contributor sweep. */
   readonly requestBudgetPerRun: number;
+  /** Requests one snapshot pass may spend on each annotated space's report. */
+  readonly requestBudgetPerSpace: number;
 }
 
 /**
@@ -63,9 +70,11 @@ export const DEFAULT_CONFLUENCE_MAX_ANALYTICS_LOOKUPS = 200;
 export const CONFLUENCE_MAX_VOLUME_FETCHES_PER_PAGE = 12;
 
 /**
- * What a run spends finding the pages before it walks any of them: the three
- * sweeps of the window, a page of the search index at a time, the space lookup
- * and account-name lookups, and the counts behind a few spaces' reports.
+ * What the contributor sweep spends finding the pages before it walks any of
+ * them: the three sweeps of the window, a page of the search index at a time,
+ * the lookup that resolves the configured space keys, and the account-name
+ * lookups. The per-space reports are not in here; they have an allowance of
+ * their own, per space.
  */
 export const CONFLUENCE_SWEEP_ALLOWANCE = 200;
 
@@ -85,12 +94,23 @@ export const DEFAULT_CONFLUENCE_REQUEST_BUDGET_PER_RUN =
   DEFAULT_CONFLUENCE_MAX_ANALYTICS_LOOKUPS +
   CONFLUENCE_SWEEP_ALLOWANCE;
 
+/**
+ * What one space's report can cost at the default `maxResultsPerRun`: seven
+ * counts and two ordered lookups, up to twenty pages of the window's changed
+ * items, up to eight pages of the parent walk, and a share of the space and
+ * account-name lookups the reports make once between them. A quiet space
+ * costs about a dozen; the allowance is pooled over every annotated space, so
+ * a busy one borrows from a quiet one.
+ */
+export const DEFAULT_CONFLUENCE_REQUEST_BUDGET_PER_SPACE = 40;
+
 export const DEFAULT_CONFLUENCE_SETTINGS: ConfluenceSettings = {
   staleAfterDays: DEFAULT_CONFLUENCE_STALE_AFTER_DAYS,
   maxPagesPerRun: DEFAULT_CONFLUENCE_MAX_PAGES_PER_RUN,
   maxPagesForVolume: DEFAULT_CONFLUENCE_MAX_PAGES_FOR_VOLUME,
   maxAnalyticsLookups: DEFAULT_CONFLUENCE_MAX_ANALYTICS_LOOKUPS,
   requestBudgetPerRun: DEFAULT_CONFLUENCE_REQUEST_BUDGET_PER_RUN,
+  requestBudgetPerSpace: DEFAULT_CONFLUENCE_REQUEST_BUDGET_PER_SPACE,
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;

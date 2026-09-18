@@ -11,6 +11,7 @@ import {
   DEFAULT_CONFLUENCE_MAX_PAGES_FOR_VOLUME,
   DEFAULT_CONFLUENCE_MAX_PAGES_PER_RUN,
   DEFAULT_CONFLUENCE_REQUEST_BUDGET_PER_RUN,
+  DEFAULT_CONFLUENCE_REQUEST_BUDGET_PER_SPACE,
   DEFAULT_CONFLUENCE_STALE_AFTER_DAYS,
 } from "../../domain/entities/confluence_settings";
 import { parseChunkDays } from "../../domain/entities/day";
@@ -101,6 +102,11 @@ const readConfluenceSettings = (config: Config | undefined): ConfluenceSettings 
     config,
     "requestBudgetPerRun",
     DEFAULT_CONFLUENCE_REQUEST_BUDGET_PER_RUN,
+  ),
+  requestBudgetPerSpace: readPositiveNumber(
+    config,
+    "requestBudgetPerSpace",
+    DEFAULT_CONFLUENCE_REQUEST_BUDGET_PER_SPACE,
   ),
 });
 
