@@ -3,6 +3,7 @@ import { describeRatePair } from "./contributor_rates";
 import { measuredByVersionControl, type ContributorSummary } from "./contributor_summary";
 import type { IntegrationCapabilities, IntegrationId } from "./integrations";
 import { NO_INTEGRATIONS } from "./integrations";
+import { formatCount, formatDecimal, formatFixed } from "./number_format";
 import {
   combineScore,
   measuredComponent,
@@ -258,7 +259,7 @@ export interface ProductivityComponentDefinition extends ScoreComponentDefinitio
 }
 
 const plural = (count: number, noun: string): string =>
-  `${count.toLocaleString()} ${noun}${count === 1 ? "" : "s"}`;
+  `${formatCount(count)} ${noun}${count === 1 ? "" : "s"}`;
 
 /**
  * How much of the fleet's mean rate scores full marks.
@@ -343,7 +344,7 @@ const pipelineOf = (
     definition,
     summary.pipelineSuccessRate,
     summary.pipelineRunsSucceeded / decided,
-    `${summary.pipelineRunsSucceeded.toLocaleString()} of ${plural(decided, "decided run")} succeeded`,
+    `${formatCount(summary.pipelineRunsSucceeded)} of ${plural(decided, "decided run")} succeeded`,
   );
 };
 
@@ -378,7 +379,7 @@ const coverageOf = (
     definition,
     sonar.coverage,
     shareOf(sonar.coverage, SONAR_COVERAGE_TARGET),
-    `${sonar.coverage.toFixed(1)}% covered, against the ${SONAR_COVERAGE_TARGET}% gate`,
+    `${formatFixed(sonar.coverage)}% covered, against the ${SONAR_COVERAGE_TARGET}% gate`,
   );
 };
 
@@ -463,7 +464,7 @@ const reopenedOf = (
     definition,
     jira.reopened,
     1 - Math.min(1, jira.reopened / jira.issuesResolved),
-    `${jira.reopened.toLocaleString()} of ${plural(jira.issuesResolved, "resolved ticket")} ${
+    `${formatCount(jira.reopened)} of ${plural(jira.issuesResolved, "resolved ticket")} ${
       jira.reopened === 1 ? "was" : "were"
     } reopened`,
   );
@@ -506,9 +507,9 @@ const documentationOf = (
     definition,
     value,
     shareOf(value, average * FLEET_RATE_CEILING),
-    `${plural(value, "Confluence contribution")} against the team's average of ${
-      Math.round(average * 10) / 10
-    } over Confluence's trailing window, not the range picked`,
+    `${plural(value, "Confluence contribution")} against the team's average of ${formatDecimal(
+      average,
+    )} over Confluence's trailing window, not the range picked`,
   );
 };
 

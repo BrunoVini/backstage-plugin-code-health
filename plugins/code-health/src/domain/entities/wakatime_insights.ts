@@ -6,7 +6,9 @@ import type {
 } from "@rios0rios0/backstage-plugin-code-health-common";
 import {
   aiAuthorshipShare,
+  formatCount,
   formatDuration,
+  formatPercent,
   mergeBreakdowns,
   mergeDailyTotals,
 } from "@rios0rios0/backstage-plugin-code-health-common";
@@ -102,7 +104,7 @@ const toRanking = (
       id: item.name,
       label: item.name,
       value: item.totalSeconds,
-      detail: total === 0 ? "" : `${Math.round((item.totalSeconds / total) * 1000) / 10}%`,
+      detail: total === 0 ? "" : formatPercent((item.totalSeconds / total) * 100),
       entityRef: null,
       avatarUrl: null,
     }));
@@ -146,7 +148,9 @@ export const topContributorsByCodingTime = (
       id: contributor.key,
       label: contributor.displayName,
       value: metrics.totalSeconds,
-      detail: `${metrics.activeDays} active ${metrics.activeDays === 1 ? "day" : "days"}`,
+      detail: `${formatCount(metrics.activeDays)} active ${
+        metrics.activeDays === 1 ? "day" : "days"
+      }`,
       entityRef: contributor.entityRef,
       avatarUrl: contributor.avatarUrl,
     }));
@@ -167,7 +171,9 @@ export const topRepositoriesByCodingTime = (
       id: repository.id,
       label: repository.name,
       value: metrics.totalSeconds,
-      detail: `${metrics.contributors} ${metrics.contributors === 1 ? "person" : "people"}`,
+      detail: `${formatCount(metrics.contributors)} ${
+        metrics.contributors === 1 ? "person" : "people"
+      }`,
       entityRef: repository.entityRef,
       avatarUrl: null,
     }));

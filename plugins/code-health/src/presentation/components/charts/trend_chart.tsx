@@ -1,3 +1,4 @@
+import { formatDecimal } from "@rios0rios0/backstage-plugin-code-health-common";
 import Box from "@material-ui/core/Box";
 import Typography from "@material-ui/core/Typography";
 import { makeStyles, useTheme } from "@material-ui/core/styles";
@@ -74,7 +75,7 @@ export interface TrendChartProps {
   readonly emptyMessage?: string;
   /** Read out for assistive technology. Defaults to the series names and the range. */
   readonly ariaLabel?: string;
-  /** Renders a value. Defaults to a plain localised number. */
+  /** Renders a value. Defaults to a grouped figure with at most one decimal. */
   readonly formatValue?: (value: number) => string;
   /** Fixes the scale instead of deriving it from the tallest point, e.g. 100 for a percentage. */
   readonly scaleMax?: number;
@@ -113,7 +114,7 @@ export const TrendChart = ({
   series,
   emptyMessage = "No activity was recorded in this window.",
   ariaLabel,
-  formatValue = (value) => value.toLocaleString(),
+  formatValue = (value) => formatDecimal(value),
   scaleMax,
   height = DEFAULT_HEIGHT,
 }: TrendChartProps) => {
@@ -242,7 +243,7 @@ export const TrendChart = ({
                 textAnchor="end"
                 className={classes.tick}
               >
-                {formatValue(Math.round(value * 10) / 10)}
+                {formatValue(value)}
               </text>
             </g>
           ))}

@@ -17,7 +17,11 @@ import type {
 } from "@rios0rios0/backstage-plugin-code-health-common";
 import {
   catalogEntityPath,
+  formatCount,
+  formatDecimal,
+  formatFixed,
   formatHours as formatJiraHours,
+  formatPercent,
   parseEntityRef,
 } from "@rios0rios0/backstage-plugin-code-health-common";
 import Box from "@material-ui/core/Box";
@@ -80,10 +84,8 @@ const EM_DASH = "—";
 /** Stable, so an absent trend does not recompute every series on every render. */
 const NO_POINTS: readonly RepositoryTrendPoint[] = [];
 
-const formatCount = (value: number): string => value.toLocaleString();
-const formatPercent = (value: number): string => `${value}%`;
-const formatRatio = (value: number): string => value.toFixed(2);
-const formatHours = (value: number): string => `${value.toLocaleString()}h`;
+const formatRatio = (value: number): string => formatFixed(value, 2);
+const formatHours = (value: number): string => `${formatDecimal(value)}h`;
 
 /**
  * Why the Sonar and compliance series look coarser than the activity ones.
@@ -180,10 +182,16 @@ const RepositoryIdentity = ({ summary }: { summary: RepositorySummary }) => {
   );
 };
 
-/** A number is localised; a string arrives already formatted; null is a dash. */
+/**
+ * A number is grouped; a string arrives already formatted; null is a dash.
+ *
+ * Grouped to at most one decimal rather than rounded to a whole number,
+ * because not every row here is a count: throughput is issues per week and
+ * reads `7.5`.
+ */
 const formatFigure = (value: number | string | null): string => {
   if (value === null) return EM_DASH;
-  return typeof value === "number" ? formatCount(value) : value;
+  return typeof value === "number" ? formatDecimal(value) : value;
 };
 
 /**
@@ -245,7 +253,7 @@ const JiraFigures = ({ metrics }: { metrics: JiraRepositoryMetrics | null }) => 
       />
       <Figure
         label="Bug ratio"
-        value={metrics.bugRatio === null ? null : `${metrics.bugRatio}%`}
+        value={metrics.bugRatio === null ? null : formatPercent(metrics.bugRatio)}
       />
       <Figure label="Reopened" value={metrics.reopened} />
       <Figure label="Open right now" value={metrics.openIssues} />
@@ -282,7 +290,10 @@ const ConfluenceFigures = ({ metrics }: { metrics: ConfluenceSpaceMetrics | null
       <Figure label="Blog posts" value={metrics.blogPostsCreated} />
       <Figure label="Comments written" value={metrics.commentsWritten} />
       <Figure label="Pages in the space" value={metrics.totalPages} />
-      <Figure label={`Untouched for ${metrics.staleAfterDays} days`} value={metrics.stalePages} />
+      <Figure
+        label={`Untouched for ${formatCount(metrics.staleAfterDays)} days`}
+        value={metrics.stalePages}
+      />
     </Box>
   );
 };
@@ -461,7 +472,6 @@ export const RepositoryDetailPage = ({
                     label: "Pull requests merged",
                   },
                 ]}
-                formatValue={formatCount}
               />
             </InfoCard>
           </Grid>
@@ -483,7 +493,6 @@ export const RepositoryDetailPage = ({
                     label: "Abandoned",
                   },
                 ]}
-                formatValue={formatCount}
               />
             </InfoCard>
           </Grid>
@@ -499,7 +508,6 @@ export const RepositoryDetailPage = ({
                   { key: REPOSITORY_TREND_SERIES.buildsSucceeded, label: "Succeeded" },
                   { key: REPOSITORY_TREND_SERIES.buildsFailed, label: "Failed" },
                 ]}
-                formatValue={formatCount}
               />
             </InfoCard>
           </Grid>
@@ -544,7 +552,6 @@ export const RepositoryDetailPage = ({
               <TrendChart
                 points={people}
                 series={[{ key: REPOSITORY_TREND_SERIES.contributors, label: "Contributors" }]}
-                formatValue={formatCount}
               />
             </InfoCard>
           </Grid>
@@ -558,7 +565,6 @@ export const RepositoryDetailPage = ({
                 points={score}
                 series={[{ key: REPOSITORY_TREND_SERIES.score, label: "Score" }]}
                 scaleMax={100}
-                formatValue={formatCount}
               />
             </InfoCard>
           </Grid>
@@ -571,7 +577,6 @@ export const RepositoryDetailPage = ({
                   { key: REPOSITORY_TREND_SERIES.bugs, label: "Bugs" },
                   { key: REPOSITORY_TREND_SERIES.vulnerabilities, label: "Vulnerabilities" },
                 ]}
-                formatValue={formatCount}
               />
             </InfoCard>
           </Grid>
@@ -581,7 +586,6 @@ export const RepositoryDetailPage = ({
               <TrendChart
                 points={smells}
                 series={[{ key: REPOSITORY_TREND_SERIES.codeSmells, label: "Smells" }]}
-                formatValue={formatCount}
               />
             </InfoCard>
           </Grid>
@@ -623,7 +627,6 @@ export const RepositoryDetailPage = ({
                   { key: REPOSITORY_TREND_SERIES.complianceChecks, label: "Checks passing" },
                 ]}
                 scaleMax={COMPLIANCE_CHECK_COUNT}
-                formatValue={formatCount}
               />
             </InfoCard>
           </Grid>
@@ -639,7 +642,6 @@ export const RepositoryDetailPage = ({
                   { key: REPOSITORY_TREND_SERIES.releases, label: "Releases" },
                   { key: REPOSITORY_TREND_SERIES.tags, label: "Tags" },
                 ]}
-                formatValue={formatCount}
               />
             </InfoCard>
           </Grid>

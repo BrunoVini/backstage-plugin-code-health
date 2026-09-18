@@ -16,6 +16,7 @@ import type {
 } from "@rios0rios0/backstage-plugin-code-health-common";
 import {
   fleetRepositoryRatesOf,
+  formatCount,
   formatDuration,
   formatRate,
   RATE_PERIODS,
@@ -204,7 +205,7 @@ export const RepositoryRatesCard = ({
       <Typography variant="caption" color="textSecondary" className={classes.note}>
         {fleet === null
           ? "No fleet average was sent for this range, so nothing here is compared. "
-          : `The fleet is the ${fleet.repositories} active ${
+          : `The fleet is the ${formatCount(fleet.repositories)} active ${
               fleet.repositories === 1 ? "repository" : "repositories"
             } tracked in this range, archived ones left out, and each average is the mean over the repositories that row could be measured on. `}
         A month is the mean Gregorian month, so twelve of them add back up to a year.

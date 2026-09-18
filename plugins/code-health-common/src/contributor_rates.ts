@@ -1,6 +1,7 @@
 import type { TimeWindow } from "./api";
 import { confluenceContributions } from "./confluence_metrics";
 import type { ChurnUnit, ContributorSummary } from "./contributor_summary";
+import { formatDecimal } from "./number_format";
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -143,16 +144,19 @@ export const contributorRatesOf = (
  * Two decimals below ten and one above, so `0.07 a day` keeps its meaning
  * while `41.3 a month` does not pretend to a precision the underlying count
  * never had.
+ *
+ * Grouped above a thousand, which is the whole reason this goes through
+ * {@link formatDecimal} rather than through `toFixed`: the monthly column of
+ * the Averages card runs into five digits on an active contributor, and
+ * `76604.9` is a figure a reader counts rather than reads. {@link formatDecimal}
+ * also drops the trailing zeros, for the same reason this function always
+ * has — they claim a precision the underlying count never had.
  */
 export const formatRate = (rate: number): string => {
   if (!Number.isFinite(rate)) return "—";
   if (rate === 0) return "0";
 
-  const fixed = rate >= 10 ? rate.toFixed(1) : rate.toFixed(2);
-  // Trailing zeros are stripped because they claim a precision the underlying
-  // count never had: "5.00 commits a day" reads as a measurement to the
-  // hundredth, when it is five commits in one day.
-  return fixed.includes(".") ? fixed.replace(/0+$/u, "").replace(/\.$/u, "") : fixed;
+  return formatDecimal(rate, rate >= 10 ? 1 : 2);
 };
 
 /**

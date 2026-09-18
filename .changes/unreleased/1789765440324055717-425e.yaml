@@ -1,0 +1,3 @@
+kind: 'Fixed'
+body: 'fixed every figure on the dashboard reading without thousands separators, which made the five-digit monthly column of the Averages card a counting exercise rather than a comparison; one `formatCount` / `formatDecimal` / `formatFixed` / `formatPercent` in the common package now spells every count, rate, percentage and duration the plugin prints, in a pinned locale so the backend and the browser cannot disagree about the same figure'
+time: '2026-09-18T21:04:00.32398844Z'

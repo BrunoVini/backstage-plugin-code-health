@@ -3,7 +3,11 @@ import type {
   ContributorSummary,
   RepositorySummary,
 } from "@rios0rios0/backstage-plugin-code-health-common";
-import { confluenceStaleShare } from "@rios0rios0/backstage-plugin-code-health-common";
+import {
+  confluenceStaleShare,
+  formatCount,
+  formatPercent,
+} from "@rios0rios0/backstage-plugin-code-health-common";
 import Box from "@material-ui/core/Box";
 import Link from "@material-ui/core/Link";
 import Tooltip from "@material-ui/core/Tooltip";
@@ -74,7 +78,7 @@ const Figure = ({
   return (
     <Box>
       <Typography variant="body2">
-        {typeof value === "number" ? value.toLocaleString() : value}
+        {typeof value === "number" ? formatCount(value) : value}
       </Typography>
       {caption === undefined ? null : (
         <Typography variant="caption" color="textSecondary">
@@ -103,11 +107,11 @@ const WordsCell = ({
 
   return (
     <Box>
-      <Typography variant="body2">{added.toLocaleString()}</Typography>
+      <Typography variant="body2">{formatCount(added)}</Typography>
       <Typography variant="caption" color="textSecondary">
-        <span className={classes.added}>+{added.toLocaleString()}</span>
+        <span className={classes.added}>+{formatCount(added)}</span>
         {" / "}
-        <span className={classes.removed}>-{(removed ?? 0).toLocaleString()}</span>
+        <span className={classes.removed}>-{formatCount(removed ?? 0)}</span>
       </Typography>
     </Box>
   );
@@ -134,11 +138,11 @@ const StaleCell = ({ pages, share }: { pages: number; share: number | null }) =>
         className={tone === "none" ? undefined : classes[tone]}
         data-tone={tone}
       >
-        {pages.toLocaleString()}
+        {formatCount(pages)}
       </Typography>
       {share === null ? null : (
         <Typography variant="caption" color="textSecondary" component="div">
-          {share}% of the space
+          {formatPercent(share)} of the space
         </Typography>
       )}
     </Box>
@@ -176,7 +180,7 @@ const ViewsCell = ({
     return (
       <Figure
         value={views}
-        caption={`across ${pages.toLocaleString()} page${pages === 1 ? "" : "s"}`}
+        caption={`across ${formatCount(pages)} page${pages === 1 ? "" : "s"}`}
       />
     );
   }
@@ -213,7 +217,7 @@ export const confluenceContributorColumns = (): ColumnDef<ContributorSummary>[] 
           value={metrics === null ? null : metrics.pagesCreated}
           {...(metrics === null
             ? {}
-            : { caption: `${metrics.pagesEdited.toLocaleString()} edited` })}
+            : { caption: `${formatCount(metrics.pagesEdited)} edited` })}
         />
       );
     },
@@ -345,7 +349,7 @@ export const confluenceRepositoryColumns = (): ColumnDef<RepositorySummary>[] =>
           value={metrics?.totalPages ?? null}
           {...(metrics === null
             ? {}
-            : { caption: `${metrics.pagesCreated.toLocaleString()} new` })}
+            : { caption: `${formatCount(metrics.pagesCreated)} new` })}
         />
       );
     },

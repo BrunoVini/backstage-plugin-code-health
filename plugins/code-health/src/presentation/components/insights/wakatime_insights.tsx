@@ -7,7 +7,12 @@ import type {
   ContributorSummary,
   RepositorySummary,
 } from "@rios0rios0/backstage-plugin-code-health-common";
-import { formatDuration, formatTokens } from "@rios0rios0/backstage-plugin-code-health-common";
+import {
+  formatCount,
+  formatDuration,
+  formatPercent,
+  formatTokens,
+} from "@rios0rios0/backstage-plugin-code-health-common";
 import { useMemo } from "react";
 import {
   categoryBreakdown,
@@ -98,7 +103,7 @@ export const WakaTimeFleetInsights = ({ contributors }: WakaTimeFleetInsightsPro
               <StatTile
                 label="Per person"
                 value={formatOptionalDuration(kpis.averageSecondsPerContributor)}
-                caption={`${kpis.measuredContributors} measured`}
+                caption={`${formatCount(kpis.measuredContributors)} measured`}
                 help="Mean across the people who logged any time at all. Dividing by everybody who committed would make the figure fall whenever somebody without WakaTime installed pushes a commit, which says nothing about how the team works."
               />
             </Grid>
@@ -107,7 +112,9 @@ export const WakaTimeFleetInsights = ({ contributors }: WakaTimeFleetInsightsPro
                 label="Top language"
                 value={kpis.topLanguage?.name ?? "—"}
                 caption={
-                  kpis.topLanguage === null ? undefined : `${kpis.topLanguage.percent}% of the time`
+                  kpis.topLanguage === null
+                    ? undefined
+                    : `${formatPercent(kpis.topLanguage.percent)} of the time`
                 }
               />
             </Grid>
@@ -116,14 +123,20 @@ export const WakaTimeFleetInsights = ({ contributors }: WakaTimeFleetInsightsPro
                 label="Top editor"
                 value={kpis.topEditor?.name ?? "—"}
                 caption={
-                  kpis.topEditor === null ? undefined : `${kpis.topEditor.percent}% of the time`
+                  kpis.topEditor === null
+                    ? undefined
+                    : `${formatPercent(kpis.topEditor.percent)} of the time`
                 }
               />
             </Grid>
             <Grid item xs={6} sm={4} md={2}>
               <StatTile
                 label="AI-written lines"
-                value={kpis.aiAuthorshipPercent === null ? "—" : `${kpis.aiAuthorshipPercent}%`}
+                value={
+                  kpis.aiAuthorshipPercent === null
+                    ? "—"
+                    : formatPercent(kpis.aiAuthorshipPercent)
+                }
                 caption="of lines added"
                 help="Share of the lines added in an editor that WakaTime attributed to AI rather than to typing. Empty means the AI figures were never collected — set `codeHealth.wakaTime.includeAiMetrics` to start — not that nobody used AI."
               />

@@ -4,7 +4,12 @@ import Tooltip from "@material-ui/core/Tooltip";
 import Typography from "@material-ui/core/Typography";
 import { makeStyles } from "@material-ui/core/styles";
 import type { Score, ScoreBand } from "@rios0rios0/backstage-plugin-code-health-common";
-import { formatScoreValue, scoreBand } from "@rios0rios0/backstage-plugin-code-health-common";
+import {
+  formatCount,
+  formatPercent,
+  formatScoreValue,
+  scoreBand,
+} from "@rios0rios0/backstage-plugin-code-health-common";
 import type { StatusTone } from "../../domain/entities/insights";
 import { useChartPalette } from "./charts/chart_palette";
 
@@ -115,9 +120,9 @@ export const ScoreCard = ({ title, subheader, score, emptyMessage }: ScoreCardPr
             </Typography>
           </Box>
           <Typography variant="caption" className={classes.evidence}>
-            {`Based on ${measured.length} of ${score.components.length} components, carrying ${Math.round(
-              score.evidence * 100,
-            )}% of the weight.`}
+            {`Based on ${formatCount(measured.length)} of ${formatCount(
+              score.components.length,
+            )} components, carrying ${formatPercent(score.evidence * 100, 0)} of the weight.`}
           </Typography>
         </>
       )}
@@ -149,7 +154,7 @@ export const ScoreCard = ({ title, subheader, score, emptyMessage }: ScoreCardPr
                     />
                   </Box>
                   <Typography variant="caption" className={classes.weight}>
-                    {`${Math.round(component.weight * 100)}%`}
+                    {formatPercent(component.weight * 100, 0)}
                   </Typography>
                 </Box>
                 <Typography variant="caption" className={classes.detail}>

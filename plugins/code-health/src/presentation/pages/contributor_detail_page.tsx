@@ -14,6 +14,8 @@ import type {
 import {
   catalogEntityPath,
   enabledIntegrations,
+  formatDecimal,
+  formatPercent,
 } from "@rios0rios0/backstage-plugin-code-health-common";
 import { useMemo } from "react";
 import { Link as RouterLink, useSearchParams } from "react-router-dom";
@@ -147,8 +149,7 @@ const TICKET_SERIES: readonly TrendSeries[] = [
   { key: CONTRIBUTOR_SERIES.ticketsResolved, label: "Tickets resolved", area: true },
 ];
 
-const formatPercent = (value: number): string => `${Math.round(value * 10) / 10}%`;
-const formatHours = (value: number): string => `${Math.round(value * 10) / 10}h`;
+const formatHours = (value: number): string => `${formatDecimal(value)}h`;
 
 /**
  * The points, or none at all when nothing in them was ever measured.

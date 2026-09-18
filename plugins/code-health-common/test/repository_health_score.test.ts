@@ -223,6 +223,28 @@ describe("computeRepositoryHealthScore", () => {
     });
   });
 
+  it("should group every count in the sentence it writes", () => {
+    // given
+    // The detail is rendered under the bar on the score card, so a build count
+    // on a busy monorepo lands there as `12480 of 13112 decided builds`.
+    const repository = aRepository({
+      activity: {
+        ...EMPTY_REPOSITORY_ACTIVITY,
+        builds: 20_000,
+        buildsSucceeded: 12_480,
+        buildsFailed: 632,
+      },
+    });
+
+    // when
+    const score = computeRepositoryHealthScore(repository);
+
+    // then
+    expect(componentById(score, "buildSuccessRate")?.detail).toBe(
+      "12,480 of 13,112 decided builds succeeded",
+    );
+  });
+
   it("should count the compliance checks that pass", () => {
     // given
     const repository = aRepository({

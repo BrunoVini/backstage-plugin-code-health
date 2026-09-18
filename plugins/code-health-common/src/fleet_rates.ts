@@ -1,6 +1,7 @@
 import type { ChurnUnit, ContributorSummary } from "./contributor_summary";
 import type { ContributorRates, ContributorRateSet } from "./contributor_rates";
 import { RATE_PERIODS } from "./contributor_rates";
+import { formatCount } from "./number_format";
 import { fleetReferenceOf, meanRate, versionControl } from "./productivity_score";
 
 /**
@@ -171,9 +172,14 @@ export const rateDeltaDirection = (delta: number): RateDeltaDirection => {
  * A delta said for a reader: `25% above`, `40% below`, or `level` when the
  * rounding leaves nothing between them. Rounded to whole percents, because
  * the count underneath was never measured to a tenth of one.
+ *
+ * Grouped, because this is the one percentage on the dashboard with no
+ * ceiling: a share of the team's average runs past a thousand percent on
+ * anybody well ahead of it, and `1110% above the team` is four digits nobody
+ * reads as eleven times.
  */
 export const describeRateDelta = (delta: number, against: string = "the team"): string => {
   const direction = rateDeltaDirection(delta);
   if (direction === "level") return `level with ${against}`;
-  return `${Math.round(Math.abs(delta) * 100)}% ${direction} ${against}`;
+  return `${formatCount(Math.abs(delta) * 100)}% ${direction} ${against}`;
 };

@@ -10,7 +10,9 @@ import type {
 } from "@rios0rios0/backstage-plugin-code-health-common";
 import {
   aiAuthorshipShare,
+  formatCount,
   formatDuration,
+  formatPercent,
   formatTokens,
 } from "@rios0rios0/backstage-plugin-code-health-common";
 import type { ColumnDef } from "@tanstack/react-table";
@@ -119,8 +121,8 @@ export const wakaTimeContributorColumns = (): ColumnDef<ContributorSummary>[] =>
       const metrics = row.original.wakaTimeMetrics;
       return (
         <StackedCell
-          value={metrics === null ? null : `${metrics.activeDays}`}
-          caption={metrics === null ? null : `of ${metrics.measuredDays}`}
+          value={metrics === null ? null : formatCount(metrics.activeDays)}
+          caption={metrics === null ? null : `of ${formatCount(metrics.measuredDays)}`}
         />
       );
     },
@@ -135,7 +137,7 @@ export const wakaTimeContributorColumns = (): ColumnDef<ContributorSummary>[] =>
       return (
         <StackedCell
           value={top?.name ?? null}
-          caption={top === null ? null : `${top.percent}%`}
+          caption={top === null ? null : formatPercent(top.percent)}
         />
       );
     },
@@ -155,7 +157,7 @@ export const wakaTimeContributorColumns = (): ColumnDef<ContributorSummary>[] =>
       const top = topSlice(metrics?.branches ?? []);
       return (
         <StackedCell
-          value={metrics === null ? null : `${metrics.branches.length}`}
+          value={metrics === null ? null : formatCount(metrics.branches.length)}
           caption={top?.name ?? null}
         />
       );
@@ -173,7 +175,7 @@ export const wakaTimeContributorColumns = (): ColumnDef<ContributorSummary>[] =>
     ),
     cell: ({ row }) => {
       const files = row.original.wakaTimeMetrics?.filesTouched ?? null;
-      return <StackedCell value={files === null ? null : files.toLocaleString()} />;
+      return <StackedCell value={files === null ? null : formatCount(files)} />;
     },
     enableColumnFilter: false,
   },
@@ -232,8 +234,8 @@ export const wakaTimeAiColumns = (): ColumnDef<ContributorSummary>[] => [
       const share = ai === null ? null : aiAuthorshipShare(ai);
       return (
         <StackedCell
-          value={share === null ? null : `${share}%`}
-          caption={ai === null ? null : `${ai.prompts.toLocaleString()} prompts`}
+          value={share === null ? null : formatPercent(share)}
+          caption={ai === null ? null : `${formatCount(ai.prompts)} prompts`}
         />
       );
     },
@@ -266,7 +268,9 @@ export const wakaTimeRepositoryColumns = (): ColumnDef<RepositorySummary>[] => [
           caption={
             metrics === null
               ? null
-              : `${metrics.contributors} ${metrics.contributors === 1 ? "person" : "people"}`
+              : `${formatCount(metrics.contributors)} ${
+                  metrics.contributors === 1 ? "person" : "people"
+                }`
           }
         />
       );

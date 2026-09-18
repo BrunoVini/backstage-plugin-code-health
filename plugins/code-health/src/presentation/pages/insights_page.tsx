@@ -3,6 +3,11 @@ import type {
   IntegrationCapabilities,
   TimeSeriesBucket,
 } from "@rios0rios0/backstage-plugin-code-health-common";
+import {
+  formatCount,
+  formatFixed,
+  formatPercent,
+} from "@rios0rios0/backstage-plugin-code-health-common";
 import Box from "@material-ui/core/Box";
 import Grid from "@material-ui/core/Grid";
 import { useMemo } from "react";
@@ -60,10 +65,9 @@ const bucketFor = (from: string, to: string): TimeSeriesBucket => {
   return "day";
 };
 
-const formatCount = (value: number): string => value.toLocaleString();
-const formatPercent = (value: number | null): string =>
-  value === null ? "—" : `${value}%`;
-const formatCoverage = (value: number): string => `${value.toFixed(1)}%`;
+const formatOptionalPercent = (value: number | null): string =>
+  value === null ? "—" : formatPercent(value);
+const formatCoverage = (value: number): string => `${formatFixed(value)}%`;
 
 export const InsightsPage = ({
   dashboardService,
@@ -176,7 +180,7 @@ export const InsightsPage = ({
                 <Grid item xs={6} sm={4} md={2}>
                   <StatTile
                     label="Build success"
-                    value={formatPercent(kpis.buildSuccessRate)}
+                    value={formatOptionalPercent(kpis.buildSuccessRate)}
                     caption="of decided runs"
                     help="Succeeded runs as a share of the runs that reached a verdict in the window. Cancelled, skipped and still-running runs are neither a success nor a failure and are left out."
                   />
@@ -184,7 +188,7 @@ export const InsightsPage = ({
                 <Grid item xs={6} sm={4} md={2}>
                   <StatTile
                     label="Review coverage"
-                    value={formatPercent(kpis.reviewCoverage)}
+                    value={formatOptionalPercent(kpis.reviewCoverage)}
                     caption="reviews per merged PR"
                     help="Reviews recorded against merged pull requests, capped at 100%. A low figure means work is merging unreviewed."
                   />

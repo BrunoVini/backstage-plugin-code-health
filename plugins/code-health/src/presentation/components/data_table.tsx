@@ -1,4 +1,5 @@
 import { Fragment } from "react";
+import { formatCount } from "@rios0rios0/backstage-plugin-code-health-common";
 import Box from "@material-ui/core/Box";
 import Button from "@material-ui/core/Button";
 import Paper from "@material-ui/core/Paper";
@@ -175,7 +176,7 @@ export const PaginationControls = <T,>({ table }: PaginationControlsProps<T>) =>
         Previous
       </Button>
       <Typography variant="caption" color="textSecondary">
-        {pageIndex + 1} / {pageCount}
+        {formatCount(pageIndex + 1)} / {formatCount(pageCount)}
       </Typography>
       <Button
         size="small"

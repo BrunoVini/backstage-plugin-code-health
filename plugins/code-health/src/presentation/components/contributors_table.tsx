@@ -30,11 +30,13 @@ import type {
   TimeWindow,
 } from "@rios0rios0/backstage-plugin-code-health-common";
 import {
+  NO_INTEGRATIONS,
   catalogEntityPath,
   computeProductivityScore,
   fleetReferenceOf,
+  formatCount,
+  formatFixed,
   formatScoreValue,
-  NO_INTEGRATIONS,
   productivityComponentsFor,
   scoreBand,
   windowDaysOf,
@@ -78,7 +80,7 @@ interface ContributorsTableProps {
   capabilities?: IntegrationCapabilities;
 }
 
-const formatRate = (rate: number): string => `${rate.toFixed(1)}%`;
+const formatRate = (rate: number): string => `${formatFixed(rate)}%`;
 
 const useStyles = makeStyles((theme) => ({
   avatar: { width: 24, height: 24 },
@@ -301,15 +303,15 @@ const ChurnCell = ({ contributor }: { contributor: ContributorSummary }) => {
     return (
       <Box>
         <Typography variant="body2">
-          {contributor.linesOfCode.toLocaleString()}
+          {formatCount(contributor.linesOfCode)}
         </Typography>
         <Typography variant="caption" color="textSecondary">
           <span className={classes.added}>
-            +{contributor.linesAdded.toLocaleString()}
+            +{formatCount(contributor.linesAdded)}
           </span>
           {" / "}
           <span className={classes.removed}>
-            -{contributor.linesDeleted.toLocaleString()}
+            -{formatCount(contributor.linesDeleted)}
           </span>
         </Typography>
       </Box>
@@ -320,7 +322,7 @@ const ChurnCell = ({ contributor }: { contributor: ContributorSummary }) => {
     return (
       <Box>
         <Typography variant="body2">
-          {contributor.changedFiles.toLocaleString()}
+          {formatCount(contributor.changedFiles)}
         </Typography>
         <Typography variant="caption" color="textSecondary">
           files changed
@@ -457,9 +459,9 @@ const columns: ColumnDef<ContributorSummary>[] = [
     ),
     cell: ({ row }) => (
       <Typography variant="body2" component="span">
-        {row.original.pullRequestsOpened.toLocaleString()}{" "}
+        {formatCount(row.original.pullRequestsOpened)}{" "}
         <Typography variant="caption" component="span" color="textSecondary">
-          / {row.original.pullRequestsMerged.toLocaleString()} merged
+          / {formatCount(row.original.pullRequestsMerged)} merged
         </Typography>
       </Typography>
     ),
@@ -475,9 +477,9 @@ const columns: ColumnDef<ContributorSummary>[] = [
     ),
     cell: ({ row }) => (
       <Typography variant="body2" component="span">
-        {row.original.reviewsApproved.toLocaleString()}{" "}
+        {formatCount(row.original.reviewsApproved)}{" "}
         <Typography variant="caption" component="span" color="textSecondary">
-          / {row.original.reviewsGiven.toLocaleString()} reviewed
+          / {formatCount(row.original.reviewsGiven)} reviewed
         </Typography>
       </Typography>
     ),

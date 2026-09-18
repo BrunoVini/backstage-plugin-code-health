@@ -1,3 +1,4 @@
+import { formatCount } from "@rios0rios0/backstage-plugin-code-health-common";
 import { monthsBefore } from "./trend_range";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -27,7 +28,9 @@ export interface ResetReach {
 const monthLabel = (months: number): string =>
   `${months} ${months === 1 ? "month" : "months"}`;
 
-const dayLabel = (days: number): string => `${days} ${days === 1 ? "day" : "days"}`;
+// Grouped: a three-year retention reads `1,095 days` in the option list.
+const dayLabel = (days: number): string =>
+  `${formatCount(days)} ${days === 1 ? "day" : "days"}`;
 
 /**
  * Whole days between `months` calendar months before `now` and `now`.
