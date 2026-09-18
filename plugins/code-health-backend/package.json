@@ -1,6 +1,6 @@
 {
   "name": "@rios0rios0/backstage-plugin-code-health-backend",
-  "version": "5.0.0",
+  "version": "5.1.0",
   "description": "Backstage backend plugin that ingests repository history from the catalog's GitHub and Azure DevOps repositories into the Backstage database, and serves it to the Code Health dashboard",
   "license": "MIT",
   "main": "src/index.ts",
@@ -65,7 +65,7 @@
     "@backstage/integration": "^2.0.3",
     "@backstage/plugin-catalog-node": "^2.2.3",
     "@backstage/plugin-permission-common": "^0.9.9",
-    "@rios0rios0/backstage-plugin-code-health-common": "^5.0.0",
+    "@rios0rios0/backstage-plugin-code-health-common": "^5.1.0",
     "express": "^4.22.2",
     "express-promise-router": "^4.1.1",
     "knex": "^3.3.0",
