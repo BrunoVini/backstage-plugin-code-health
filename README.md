@@ -177,8 +177,11 @@ codeHealth:
     # Day by day. `P7D` finishes the backfill roughly seven times sooner, at the
     # cost of coarser resume granularity when a run is interrupted.
     backfillChunk: 'P1D'
-    # Hard ceiling on provider requests per run, per host. When it is spent the
-    # run stops and the next one resumes from the same cursors.
+    # Hard ceiling on provider requests per ingestion run, and per snapshot
+    # pass on the repository loop. When it is spent the run stops and the next
+    # one resumes from the same cursors; a snapshot pass that stops short takes
+    # the repositories it left first the next time. The optional integrations
+    # do not draw on it — each spends a `requestBudgetPerRun` of its own.
     requestBudgetPerRun: 500
     concurrencyPerHost: 4
     schedule:
@@ -218,6 +221,9 @@ codeHealth:
     # for a whole window costs one request per member, while these cost one per
     # member per day.
     includeAiMetrics: false
+    # WakaTime's own allowance per snapshot pass: two requests to find the
+    # members, then one per member, plus one per member per day of AI figures.
+    requestBudgetPerRun: 500
 
   # One credential, both products.
   atlassian:
@@ -227,9 +233,26 @@ codeHealth:
     historyDays: 90
     jira:
       enabled: true
+      # Jira's own allowance per snapshot pass, room for about two dozen
+      # projects at the default `maxIssuesPerProject`.
+      requestBudgetPerRun: 500
     confluence:
       enabled: true
+      # The contributor sweep's own allowance per snapshot pass. The default is
+      # what its page caps can need — 500 version histories, up to twelve
+      # bodies for each of 150 pages measured for volume, 200 analytics lookups
+      # and 200 for the searches — so a walk the caps allow is never cut short.
+      requestBudgetPerRun: 2700
+      # What each annotated space's report may spend, pooled over every space
+      # the catalog names, since the reports' cost scales with that count.
+      requestBudgetPerSpace: 40
 ```
+
+Each integration spends its own allowance during the snapshot pass, and the repository loop — the
+provider snapshots and the Sonar readings taken beside them — spends `ingestion.requestBudgetPerRun`.
+None can starve another: a large Confluence space costs the pass its Confluence figures and nothing
+else. The pass reports what each source spent, by name, and warns by count when it left repositories
+unvisited, could not ask Sonar about some, or an integration stopped short of its allowance.
 
 Every integration is absent by default, and the frontend asks the backend which ones are configured
 before it draws anything. That is why a column for a switched-off integration is never built rather
@@ -598,7 +621,7 @@ them once rather than once per replica:
 |---|---|---|
 | `code-health.discover` | every 30 minutes | Reconciles the tracked repositories with the catalog |
 | `code-health.ingest` | every 5 minutes | Moves each forward cursor to now, then backfills with what is left of the budget |
-| `code-health.snapshot` | daily at 03:00 | Captures compliance, badges, Sonar, branches, latest release and tag |
+| `code-health.snapshot` | daily at 03:00 | Captures compliance, badges, Sonar, branches, latest release and tag — the repositories the last pass never reached first — then runs each integration's sweep on its own allowance |
 
 Backstage's scheduler exposes a control plane for them:
 
@@ -609,6 +632,16 @@ curl -X POST localhost:7007/api/code-health/.backstage/scheduler/v1/tasks/code-h
 
 `GET /api/code-health/v1/coverage` reports how far the backfill has got, which repositories are
 failing, and the instant every repository has data through.
+
+The snapshot pass ends with one line saying what each source spent of its own allowance:
+
+```
+snapshot pass finished: captured 190 of 190 repositories, 0 failures, 41 WakaTime members; requests spent: repositories=412 sonar=190 wakatime=43 jira=62 confluence=1204 confluence-spaces=118
+```
+
+It warns, naming the setting to raise, when it left repositories unvisited (they go first on the next
+pass), when Sonar could not be asked about some of them, or when an integration spent its whole
+allowance and stopped short.
 
 ### Re-collecting the history
 
@@ -671,7 +704,8 @@ code-health           ──▶  /api/code-health/v1/*      ┌──▶  catalo
 ```
 
 Every provider request passes through one gateway that caps concurrency per host, spends a bounded
-budget per run, retries `429` and `5xx` with jittered backoff, and opens a circuit breaker on a host
+budget per run — one allowance per source on the snapshot pass, so no integration can starve the
+repository loop — retries `429` and `5xx` with jittered backoff, and opens a circuit breaker on a host
 that keeps failing. It reads `Retry-After` and the `X-RateLimit-*` headers on **every** response,
 not only on errors — Azure DevOps applies throttling as latency on a successful `200` and sends
 those headers before it starts delaying.

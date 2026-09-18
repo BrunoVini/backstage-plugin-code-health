@@ -118,6 +118,23 @@ export interface ContributorSummary {
   readonly confluenceMetrics: ConfluenceContributorMetrics | null;
 }
 
+/**
+ * Whether version control measured this person at all.
+ *
+ * A row exists for anybody any source reported, and its version-control
+ * figures are plain numbers with no way to say "never asked". Somebody known
+ * only to Jira, WakaTime or Confluence therefore carries `commits: 0`, and
+ * read as a measurement that zero would go into every version-control mean
+ * and score them as somebody who committed nothing. It is not zero commits;
+ * nothing was ever counted on their behalf. A person who does have a
+ * version-control account and was quiet is the opposite case — a measured
+ * zero, exactly like a quiet week — and the difference between the two is
+ * whether any account on the row came from version control, which the row's
+ * identities name.
+ */
+export const measuredByVersionControl = (summary: ContributorSummary): boolean =>
+  summary.identities.some((identity) => identity.source === "vcs");
+
 /** Percentage of `part` within `total`, rounded to one decimal, 0 when `total` is 0. */
 export const computeRate = (part: number, total: number): number => {
   if (total <= 0) return 0;

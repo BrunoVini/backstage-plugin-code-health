@@ -197,6 +197,50 @@ describe("fleetReferenceOf", () => {
     expect(reference.documentationContributions).toBe(3);
   });
 
+  it("should keep somebody version control never saw out of the version-control means", () => {
+    // given
+    // A row known only to Jira carries `commits: 0` with no way to say "never
+    // asked". Read as a measurement that zero lowered the commit mean and
+    // raised every real committer's score; it is not zero commits.
+    const contributors = [
+      aContributor({ commits: 10, pullRequestsMerged: 4, reviewsGiven: 6 }),
+      aContributor({
+        key: "jira:acct-1",
+        identities: [{ source: "jira", sourceKey: "acct-1", displayName: "Only Jira" }],
+        commits: 0,
+        pullRequestsMerged: 0,
+        reviewsGiven: 0,
+        churnUnit: "none",
+        jiraMetrics: jira({ issuesResolved: 4 }),
+      }),
+    ];
+
+    // when
+    const reference = fleetReferenceOf(contributors, 1);
+
+    // then
+    expect(reference.commits).toBe(10);
+    expect(reference.pullRequestsMerged).toBe(4);
+    expect(reference.reviewsGiven).toBe(6);
+    expect(reference.issuesResolved).toBe(4);
+  });
+
+  it("should count a quiet version-control account as a real zero", () => {
+    // given
+    // The other half of the rule: an account version control knows that did
+    // nothing in the window is a measured zero, and it moves the mean.
+    const contributors = [
+      aContributor({ commits: 10 }),
+      aContributor({ key: "vcs:quiet", commits: 0 }),
+    ];
+
+    // when
+    const reference = fleetReferenceOf(contributors, 1);
+
+    // then
+    expect(reference.commits).toBe(5);
+  });
+
   it("should floor the window at a fraction of a day", () => {
     // given
     // The shortest range the dashboard offers is an hour, and a zero
@@ -518,6 +562,39 @@ describe("computeProductivityScore", () => {
     // then
     expect(score.value).toBeNull();
     expect(score.evidence).toBe(0);
+  });
+
+  it("should leave the version-control components unmeasured for somebody version control never saw", () => {
+    // given
+    // Their zero commits are not a measurement, and a measured zero would put
+    // a nought on the row of somebody whose work all happened in Jira. The
+    // absence is named as an unlinked account, which is the one cause
+    // somebody can go and fix.
+    const onlyJira = aContributor({
+      key: "jira:acct-1",
+      identities: [{ source: "jira", sourceKey: "acct-1", displayName: "Only Jira" }],
+      commits: 0,
+      pullRequestsMerged: 0,
+      reviewsGiven: 0,
+      churnUnit: "none",
+      pipelineRunsSucceeded: 0,
+      pipelineRunsFailed: 0,
+      jiraMetrics: jira({ issuesResolved: 4 }),
+    });
+    const committer = aContributor({ jiraMetrics: jira({ issuesResolved: 4 }) });
+    const reference = fleetReferenceOf([committer, onlyJira], 1);
+
+    // when
+    const score = computeProductivityScore(onlyJira, reference, JIRA_ONLY);
+
+    // then
+    for (const id of ["commits", "pullRequestsMerged", "churn", "reviewsGiven", "pipelineSuccessRate"]) {
+      expect(componentById(score, id)).toMatchObject({
+        normalized: null,
+        detail: "no version-control account is linked to this person",
+      });
+    }
+    expect(componentById(score, "ticketsResolved")?.normalized).toBe(0.5);
   });
 
   it("should score only the integrations that are configured, never the ones a row carries", () => {

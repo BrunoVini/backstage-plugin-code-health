@@ -25,6 +25,8 @@ codeHealth:
       enabled: true
       # Custom field id holding story points. Leave unset to resolve it by name.
       storyPointsField: null
+      # Jira's own allowance per snapshot pass.
+      requestBudgetPerRun: 500
 ```
 
 Create the token at <https://id.atlassian.com/manage-profile/security/api-tokens>. It is
@@ -198,9 +200,12 @@ a row that stayed separate.
 
 ## Cost and rate limiting
 
-Every request goes through the shared provider gateway: a per-run request budget, a
-per-host concurrency cap that lowers itself when the site reports it is close to
-throttling, jittered retry, and a circuit breaker.
+Every request goes through the shared provider gateway: a per-host concurrency cap that
+lowers itself when the site reports it is close to throttling, jittered retry, and a
+circuit breaker. The request allowance is Jira's own — `requestBudgetPerRun`, 500 by
+default, room for about two dozen projects at the default `maxIssuesPerProject` — and
+nothing else in the snapshot pass draws on it, so a project with a large ticket volume
+costs the pass its Jira figures and never a repository snapshot.
 
 Per run, per **project** (not per repository):
 
@@ -224,7 +229,8 @@ chart that would read as an empty backlog.
 queries each project once for both.
 
 If a project's query fails, that project is skipped and the rest of the run continues. If
-the budget is exhausted, the run stops where it is and the next one starts fresh.
+the allowance is exhausted, the run stops at the project it is on, the next one starts
+fresh, and the snapshot pass warns that Jira stopped short and names the setting.
 
 ## Timezone
 

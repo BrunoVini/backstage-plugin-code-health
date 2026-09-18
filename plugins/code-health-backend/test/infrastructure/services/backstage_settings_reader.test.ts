@@ -30,6 +30,7 @@ describe("readCodeHealthSettings", () => {
       // member, while the AI figures cost one per member per day.
       includeAiMetrics: false,
       aiDaysPerRun: 3,
+      requestBudgetPerRun: 500,
     });
     expect(settings.atlassian).toEqual({
       baseUrl: null,
@@ -144,7 +145,65 @@ describe("readCodeHealthSettings", () => {
       historyDays: 90,
       includeAiMetrics: true,
       aiDaysPerRun: 7,
+      requestBudgetPerRun: 500,
     });
+  });
+
+  it("should give each integration a request allowance of its own by default", () => {
+    // given / when
+    const settings = read({});
+
+    // then
+    // Confluence's is what its own default caps can need — one version
+    // history for 500 pages, twelve bodies for each of 150, 200 analytics
+    // lookups and 200 for the sweeps — so the caps are reachable rather than
+    // nominal. The other two are room for a large organisation and a couple
+    // of dozen projects.
+    expect(settings.wakaTime.requestBudgetPerRun).toBe(500);
+    expect(settings.jira.requestBudgetPerRun).toBe(500);
+    expect(settings.confluence.requestBudgetPerRun).toBe(2700);
+    // The space reports are paid per annotated space, apart from the sweep.
+    expect(settings.confluence.requestBudgetPerSpace).toBe(40);
+  });
+
+  it("should read each integration's request allowance from its own block", () => {
+    // given / when
+    const settings = read({
+      codeHealth: {
+        wakaTime: { requestBudgetPerRun: 120 },
+        atlassian: {
+          jira: { requestBudgetPerRun: 80 },
+          confluence: { requestBudgetPerRun: 4000, requestBudgetPerSpace: 60 },
+        },
+      },
+    });
+
+    // then
+    expect(settings.wakaTime.requestBudgetPerRun).toBe(120);
+    expect(settings.jira.requestBudgetPerRun).toBe(80);
+    expect(settings.confluence.requestBudgetPerRun).toBe(4000);
+    expect(settings.confluence.requestBudgetPerSpace).toBe(60);
+  });
+
+  it("should reject a non-positive integration allowance", () => {
+    // given / when
+    // An allowance of zero would switch the integration off without saying
+    // so, one refused request at a time.
+    const settings = read({
+      codeHealth: {
+        wakaTime: { requestBudgetPerRun: 0 },
+        atlassian: {
+          jira: { requestBudgetPerRun: -5 },
+          confluence: { requestBudgetPerRun: 0, requestBudgetPerSpace: 0 },
+        },
+      },
+    });
+
+    // then
+    expect(settings.wakaTime.requestBudgetPerRun).toBe(500);
+    expect(settings.jira.requestBudgetPerRun).toBe(500);
+    expect(settings.confluence.requestBudgetPerRun).toBe(2700);
+    expect(settings.confluence.requestBudgetPerSpace).toBe(40);
   });
 
   it("should read the Atlassian collection settings", () => {

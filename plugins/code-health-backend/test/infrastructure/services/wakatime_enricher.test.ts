@@ -29,6 +29,7 @@ const createEnricher = (overrides: Partial<WakaTimeSettings> = {}) => {
       historyDays: 30,
       includeAiMetrics: false,
       aiDaysPerRun: 3,
+      requestBudgetPerRun: 500,
       ...overrides,
     },
     logger,

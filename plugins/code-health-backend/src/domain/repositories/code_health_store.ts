@@ -196,6 +196,18 @@ export interface CodeHealthStore {
 
   deleteIdentityExclusion(identity: IdentityRef): Promise<void>;
 
+  /**
+   * The day of every repository's most recent snapshot, for the ones that have
+   * one.
+   *
+   * What the snapshot pass orders its loop by. A repository the last pass never
+   * reached carries an older day than the ones it did, or none at all, and
+   * goes first — the same staleness-first rule the ingestion actor follows, and
+   * it needs no cursor of its own because the snapshots already record where
+   * the last pass got to.
+   */
+  listLatestSnapshotDays(): Promise<ReadonlyMap<string, Day>>;
+
   /** Most recent snapshot at or before `day`, per repository. */
   listLatestSnapshots(options: {
     day: Day;

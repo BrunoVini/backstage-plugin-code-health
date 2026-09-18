@@ -45,10 +45,26 @@ export interface JiraSettings {
    * would otherwise compare against a complete one.
    */
   readonly maxIssuesPerProject: number;
+  /**
+   * Requests one snapshot pass may spend on Jira, on an allowance of its own.
+   *
+   * Its own rather than a share of the ingestion budget, so a project with a
+   * large ticket volume costs the pass its Jira figures and nothing else — it
+   * used to be able to spend what the repository snapshots needed. A run that
+   * reaches this stops at the project it is on and says so.
+   */
+  readonly requestBudgetPerRun: number;
 }
 
 export const DEFAULT_JIRA_HISTORY_DAYS = 90;
 export const DEFAULT_JIRA_MAX_ISSUES_PER_PROJECT = 1000;
+/**
+ * Room for about two dozen projects at the default `maxIssuesPerProject`.
+ *
+ * A project costs at most ten pages of issues, two backlog lookups and one
+ * count per priority, and three site-wide lookups are paid once per run.
+ */
+export const DEFAULT_JIRA_REQUEST_BUDGET_PER_RUN = 500;
 
 export const DEFAULT_JIRA_SETTINGS: JiraSettings = {
   enabled: false,
@@ -56,6 +72,7 @@ export const DEFAULT_JIRA_SETTINGS: JiraSettings = {
   storyPointsField: null,
   historyDays: DEFAULT_JIRA_HISTORY_DAYS,
   maxIssuesPerProject: DEFAULT_JIRA_MAX_ISSUES_PER_PROJECT,
+  requestBudgetPerRun: DEFAULT_JIRA_REQUEST_BUDGET_PER_RUN,
 };
 
 /**

@@ -87,7 +87,7 @@ New files behind the trends, ownership and administration work:
 | Package | Files |
 |---|---|
 | `-common` | `score.ts`, `productivity_score.ts`, `repository_health_score.ts`, `trend.ts`, `ownership.ts`, `identity_exclusion.ts`, `fleet_rates.ts`, `repository_rates.ts`; `searchDirectoryUsers` in `identity.ts` |
-| `-backend` | `domain/commands/get_contributor_trend.ts`, `get_repository_trend.ts`, `list_owned_repositories.ts`, `list_directory_users.ts`, `reset_ingestion.ts`, `authorize_administrator.ts`, `exclude_identity.ts`; `domain/entities/permissions.ts`, `bucket.ts`, `contributor_aggregation.ts`, `repository_summary_builder.ts`; `migrations/20260910000000_owner.js`, `migrations/20260915000000_identity_exclusions.js` |
+| `-backend` | `domain/commands/get_contributor_trend.ts`, `get_repository_trend.ts`, `list_owned_repositories.ts`, `list_directory_users.ts`, `reset_ingestion.ts`, `authorize_administrator.ts`, `exclude_identity.ts`; `domain/entities/permissions.ts`, `bucket.ts`, `contributor_aggregation.ts`, `repository_summary_builder.ts`, `snapshot_allowances.ts`; `migrations/20260910000000_owner.js`, `migrations/20260915000000_identity_exclusions.js` |
 | frontend | `presentation/pages/contributor_detail_page.tsx`, `repository_detail_page.tsx`; `components/charts/trend_chart.tsx`, `components/score_card.tsx`, `components/trend_range_picker.tsx`, `components/owned_repositories_card.tsx`, `components/ingestion_reset_button.tsx`, `components/contributor_rates_card.tsx`, `components/repository_rates_card.tsx`, `components/rate_comparison.tsx`, `components/data_table.tsx`; `components/identity_exclusion_cell.tsx`, `components/identity_link_cell.tsx`; `hooks/use_trend_window.ts`, `hooks/use_contributor_trend.ts`, `hooks/use_owned_repositories.ts`, `hooks/use_repository_trend.ts`, `hooks/use_access.ts`, `hooks/use_directory_search.ts`; `domain/entities/contributor_trend.ts`, `domain/entities/repository_trend.ts`, `domain/entities/reset_reach.ts` |
 
 ## Things not to change without understanding why
@@ -244,6 +244,20 @@ New files behind the trends, ownership and administration work:
   `~/.autobump.yaml`. On anything older the project file's `refresh: true` is warned about and
   dropped and the release ships the stale lockfile, repaired by hand afterwards. See
   `CLAUDE.md` > Release.
+- **The snapshot pass gives every source a request allowance of its own** (`SnapshotAllowances`):
+  the repository loop and Sonar spend `ingestion.requestBudgetPerRun`, and WakaTime, Jira and
+  Confluence each spend the `requestBudgetPerRun` in their own block — Confluence's space reports
+  spend `requestBudgetPerSpace` per annotated space on top. Do not put them back on one
+  budget — the enrichers used to spend it before the first repository was captured, and one large
+  Confluence space starved the loop for the same repositories every night. The loop takes the
+  never-captured and oldest-captured repositories first (`listLatestSnapshotDays`), runs before the
+  contributor sweeps, and the pass warns by count and by setting whenever anything stopped short.
+- **A Confluence space is queried by the key it was created with.** The spaces API resolves the
+  alias an administrator renamed it to; CQL does not. `resolveSpaces` maps whatever an annotation or
+  `spaceKeys` wrote to the key CQL knows, and the allow-list is compared by space id.
+- **Only a row with a `vcs` identity is measured for commits, pull requests and reviews.**
+  `meanRate` skips null, not zero, and those fields cannot be null, so a Jira-only person used to
+  drag the commit mean down. `measuredByVersionControl` gates both the fleet reference and the score.
 - **`.github/workflows/default.yaml` passes `install_run_scripts: true`.** The shared workflow
   installs with `--mode=skip-build`, and `better-sqlite3` is a native addon the store tests need.
   Removing the flag fails every `KnexCodeHealthStore` test with "Could not locate the bindings file".

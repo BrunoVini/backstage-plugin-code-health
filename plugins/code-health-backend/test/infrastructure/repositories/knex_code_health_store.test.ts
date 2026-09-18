@@ -565,6 +565,42 @@ describe("KnexCodeHealthStore", () => {
     });
   });
 
+  describe("listLatestSnapshotDays", () => {
+    it("should name the newest day per repository and leave out one never captured", async () => {
+      // given
+      // The snapshot pass takes the never-captured first and the oldest capture
+      // next, so the answer has to carry the newest day of each and nothing at
+      // all for a repository with no snapshot.
+      const store = await createStore();
+      const captured = DiscoveredRepositoryBuilder.create()
+        .withEntityRef("component:default/captured")
+        .build();
+      const never = DiscoveredRepositoryBuilder.create()
+        .withEntityRef("component:default/never")
+        .build();
+      await store.syncRepositories({
+        discovered: [captured, never],
+        retentionDays: 365,
+        now: NOW,
+      });
+      for (const day of ["2026-08-08", "2026-08-11", "2026-08-09"]) {
+        await store.saveSnapshot({
+          repositoryId: captured.id,
+          day,
+          capturedAt: NOW,
+          payload: aSnapshotPayload(),
+        });
+      }
+
+      // when
+      const latest = await store.listLatestSnapshotDays();
+
+      // then
+      expect(latest.get(captured.id)).toBe("2026-08-11");
+      expect(latest.has(never.id)).toBe(false);
+    });
+  });
+
   describe("listLatestSnapshots", () => {
     it("should return the newest snapshot at or before the requested day", async () => {
       // given

@@ -337,6 +337,17 @@ export class InMemoryCodeHealthStore implements CodeHealthStore {
     this.identityExclusions.delete(identityKey(identity));
   }
 
+  async listLatestSnapshotDays(): Promise<ReadonlyMap<string, Day>> {
+    const latest = new Map<string, Day>();
+    for (const snapshot of this.snapshots.values()) {
+      const known = latest.get(snapshot.repositoryId);
+      if (known === undefined || snapshot.day > known) {
+        latest.set(snapshot.repositoryId, snapshot.day);
+      }
+    }
+    return latest;
+  }
+
   async listLatestSnapshots(options: {
     day: Day;
     repositoryIds?: readonly string[];

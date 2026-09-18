@@ -1,7 +1,7 @@
 import type { ChurnUnit, ContributorSummary } from "./contributor_summary";
 import type { ContributorRates, ContributorRateSet } from "./contributor_rates";
 import { RATE_PERIODS } from "./contributor_rates";
-import { fleetReferenceOf, meanRate } from "./productivity_score";
+import { fleetReferenceOf, meanRate, versionControl } from "./productivity_score";
 
 /**
  * The team's **mean daily rate** for every measure the Averages card prints,
@@ -72,12 +72,16 @@ export const contributorFleetRatesOf = (
     days: reference.days,
     people: contributors.length,
     commits: reference.commits,
-    pullRequestsOpened: meanRate(contributors, reference.days, (row) => row.pullRequestsOpened),
+    pullRequestsOpened: meanRate(
+      contributors,
+      reference.days,
+      versionControl((row) => row.pullRequestsOpened),
+    ),
     pullRequestsMerged: reference.pullRequestsMerged,
     reviewsGiven: reference.reviewsGiven,
     linesOfCode: anyMeasured(contributors, lines) ? reference.linesOfCode : null,
     changedFiles: anyMeasured(contributors, files) ? reference.changedFiles : null,
-    pipelineRuns: meanRate(contributors, reference.days, (row) => row.pipelineRuns),
+    pipelineRuns: meanRate(contributors, reference.days, versionControl((row) => row.pipelineRuns)),
     codingSeconds: anyMeasured(contributors, coding) ? reference.codingSeconds : null,
     issuesResolved: anyMeasured(contributors, tickets) ? reference.issuesResolved : null,
   };

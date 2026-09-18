@@ -1,0 +1,3 @@
+kind: 'Fixed'
+body: 'fixed a person known only to Jira, WakaTime or Confluence counting as a zero in the team''s commit, pull request and review means and being scored as somebody who committed nothing: only a row with a version-control account is measured for those, so the mean every real committer is read against no longer sinks with each such row, and their version-control components read as unmeasured — "no version-control account is linked to this person" — rather than as a nought. A version-control account that was quiet in the window is still a real zero'
+time: '2026-09-17T23:07:56.149887686Z'

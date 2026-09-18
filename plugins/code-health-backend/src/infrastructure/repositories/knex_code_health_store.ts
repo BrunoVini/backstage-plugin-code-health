@@ -687,6 +687,17 @@ export class KnexCodeHealthStore implements CodeHealthStore {
       .delete();
   }
 
+  async listLatestSnapshotDays(): Promise<ReadonlyMap<string, Day>> {
+    // One row per repository straight from the database: the grouping is
+    // portable across SQLite and PostgreSQL, and the answer is bounded by the
+    // number of repositories that have ever been captured.
+    const rows = (await this.client(SNAPSHOTS)
+      .select("repository_id", this.client.raw("max(day) as day"))
+      .groupBy("repository_id")) as Array<{ repository_id: string; day: Date | string }>;
+
+    return new Map(rows.map((row) => [row.repository_id, fromStoredDate(row.day)]));
+  }
+
   async listLatestSnapshots(options: {
     day: Day;
     repositoryIds?: readonly string[];

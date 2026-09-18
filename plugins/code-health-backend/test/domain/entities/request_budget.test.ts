@@ -74,6 +74,25 @@ describe("RequestBudget", () => {
     expect(error?.spent).toBe(2);
   });
 
+  it("should count what it turned away, and nothing while the allowance lasts", () => {
+    // given
+    // Spending the last request is not wanting one more: only a refusal says
+    // the pass stopped short, so a budget used to the unit reports none.
+    const budget = new RequestBudget(2);
+    budget.consume();
+    budget.consume();
+    const exact = budget.refused;
+
+    // when
+    budget.tryConsume();
+    budget.tryConsume();
+
+    // then
+    expect(exact).toBe(0);
+    expect(budget.refused).toBe(2);
+    expect(budget.limit).toBe(2);
+  });
+
   it("should refuse everything when created with no allowance", () => {
     // given
     const budget = new RequestBudget(0);

@@ -1,4 +1,8 @@
 import type {
+  ConfluenceContributorMetrics,
+  ConfluenceSpaceMetrics,
+  JiraContributorMetrics,
+  JiraRepositoryMetrics,
   Platform,
   SonarMetrics,
   WakaTimeMetrics,
@@ -45,13 +49,84 @@ const settings = (overrides: Partial<IngestionSettings> = {}): IngestionSettings
 });
 
 class StubSonarEnricher implements SonarEnricher {
+  private requestsPerFetch = 0;
+
   constructor(private readonly metrics: SonarMetrics | null) {}
 
   readonly calls: string[] = [];
 
-  async fetch(repository: TrackedRepository): Promise<SonarMetrics | null> {
+  /** Spends this many requests per repository, the way the real one spends one. */
+  withRequestCost(requests: number): StubSonarEnricher {
+    this.requestsPerFetch = requests;
+    return this;
+  }
+
+  async fetch(
+    repository: TrackedRepository,
+    context: EnrichmentContext,
+  ): Promise<SonarMetrics | null> {
     this.calls.push(repository.entityRef);
+    for (let index = 0; index < this.requestsPerFetch; index += 1) context.budget.consume();
     return this.metrics;
+  }
+}
+
+/**
+ * Spends what it is told on every call and keeps what it was refused, the way
+ * the real enrichers stop where the allowance ends and keep what they had.
+ */
+const spend = (context: EnrichmentContext, requests: number): void => {
+  for (let index = 0; index < requests; index += 1) {
+    if (!context.budget.tryConsume()) return;
+  }
+};
+
+class StubJiraEnricher implements JiraEnricher {
+  constructor(private readonly requestsPerCall: number) {}
+
+  async fetchContributors(
+    context: EnrichmentContext,
+  ): Promise<ReadonlyMap<string, JiraContributorMetrics>> {
+    spend(context, this.requestsPerCall);
+    return new Map();
+  }
+
+  async fetchContributorsByDay(
+    context: EnrichmentContext,
+  ): Promise<ReadonlyMap<Day, ReadonlyMap<string, JiraContributorMetrics>>> {
+    spend(context, this.requestsPerCall);
+    return new Map();
+  }
+
+  async fetchRepositories(
+    _repositories: readonly TrackedRepository[],
+    context: EnrichmentContext,
+  ): Promise<ReadonlyMap<string, JiraRepositoryMetrics>> {
+    spend(context, this.requestsPerCall);
+    return new Map();
+  }
+}
+
+class StubConfluenceEnricher implements ConfluenceEnricher {
+  /** What the contributor sweep saw when it ran, for a test about ordering. */
+  sweptAfter: (() => void) | null = null;
+
+  constructor(private readonly requestsPerCall: number) {}
+
+  async fetchContributors(
+    context: EnrichmentContext,
+  ): Promise<ReadonlyMap<string, ConfluenceContributorMetrics>> {
+    this.sweptAfter?.();
+    spend(context, this.requestsPerCall);
+    return new Map();
+  }
+
+  async fetchRepositories(
+    _repositories: readonly TrackedRepository[],
+    context: EnrichmentContext,
+  ): Promise<ReadonlyMap<string, ConfluenceSpaceMetrics>> {
+    spend(context, this.requestsPerCall);
+    return new Map();
   }
 }
 
@@ -85,14 +160,21 @@ class StubWakaTimeEnricher implements WakaTimeEnricher {
   }
 }
 
+const REQUEST_BUDGETS = { wakaTime: 500, jira: 500, confluence: 500, confluencePerSpace: 40 };
+
 const createCommand = async (options: {
   repositories?: number;
+  /** Given to every repository, so the Sonar enricher is asked about each. */
+  sonarProjectKey?: string;
+  /** Confluence space keys, handed out to the repositories in turn. */
+  confluenceSpaceKeys?: readonly string[];
   collector?: StubVcsCollector;
   sonar?: SonarEnricher | null;
   wakaTime?: WakaTimeEnricher | null;
   wakaTimeWindow?: { historyDays: number; aiDays: number };
   jira?: JiraEnricher | null;
   confluence?: ConfluenceEnricher | null;
+  requestBudgets?: Partial<typeof REQUEST_BUDGETS>;
   overrides?: Partial<IngestionSettings>;
 }) => {
   const store = new InMemoryCodeHealthStore();
@@ -100,11 +182,16 @@ const createCommand = async (options: {
   const collector = options.collector ?? new StubVcsCollector();
 
   await store.syncRepositories({
-    discovered: Array.from({ length: options.repositories ?? 1 }, (_unused, index) =>
-      DiscoveredRepositoryBuilder.create()
+    discovered: Array.from({ length: options.repositories ?? 1 }, (_unused, index) => {
+      const spaces = options.confluenceSpaceKeys ?? [];
+      const spaceKey = spaces.length === 0 ? null : (spaces[index % spaces.length] ?? null);
+      const builder = DiscoveredRepositoryBuilder.create()
         .withEntityRef(`component:default/repo-${index}`)
-        .build(),
-    ),
+        .withCatalogFacts({ confluenceSpaceKey: spaceKey });
+      return options.sonarProjectKey === undefined
+        ? builder.build()
+        : builder.withSonarProjectKey(options.sonarProjectKey).build();
+    }),
     retentionDays: 365,
     now: NOW,
   });
@@ -119,6 +206,7 @@ const createCommand = async (options: {
     wakaTimeWindow: options.wakaTimeWindow ?? { historyDays: 30, aiDays: 0 },
     jira: options.jira ?? null,
     confluence: options.confluence ?? null,
+    requestBudgets: { ...REQUEST_BUDGETS, ...options.requestBudgets },
     identities,
     settings: settings(options.overrides),
     logger,
@@ -460,6 +548,230 @@ describe("CaptureRepositorySnapshots", () => {
     expect(result.budgetExhausted).toBe(true);
   });
 
+  it("should keep every repository's snapshot when an enricher spends its whole allowance", async () => {
+    // given
+    // The enrichers used to draw on the loop's budget first, so one large
+    // Confluence space could leave the repository loop — the only part of the
+    // pass nothing else can record — with nothing at all.
+    const confluence = new StubConfluenceEnricher(1_000);
+    const jira = new StubJiraEnricher(1_000);
+    const collector = new StubVcsCollector().withRequestCost(2);
+    const { command, logger } = await createCommand({
+      repositories: 3,
+      collector,
+      confluence,
+      jira,
+      requestBudgets: { confluence: 20, jira: 30 },
+      overrides: { requestBudgetPerRun: 6 },
+    });
+
+    // when
+    const result = await command.run({ now: NOW });
+
+    // then
+    expect(result.captured).toBe(3);
+    expect(result.unvisited).toBe(0);
+    expect(result.requestsBySource).toMatchObject({ repositories: 6, confluence: 20, jira: 30 });
+    expect(result.starvedSources).toEqual(["jira", "confluence"]);
+    const warnings = logger.at("warn").join("\n");
+    expect(warnings).toContain(
+      "The Confluence contributor sweep spent its whole allowance of 20 requests",
+    );
+    expect(warnings).toContain("codeHealth.atlassian.confluence.requestBudgetPerRun");
+    expect(warnings).toContain("codeHealth.atlassian.jira.requestBudgetPerRun");
+  });
+
+  it("should pay for the Confluence space reports per annotated space, apart from the contributor sweep", async () => {
+    // given
+    // The reports' cost scales with the annotation count and the contributor
+    // sweep's with its page caps. On one allowance, enough annotated spaces
+    // spent what the caps were sized for before the sweep began, and every
+    // person's figures then under-reported as a measured low.
+    const confluence = new StubConfluenceEnricher(1_000);
+    const { command, logger } = await createCommand({
+      repositories: 4,
+      confluenceSpaceKeys: ["ENG", "ops", "OPS"],
+      confluence,
+      requestBudgets: { confluence: 30, confluencePerSpace: 5 },
+    });
+
+    // when
+    const result = await command.run({ now: NOW });
+
+    // then
+    // Two distinct spaces however the annotations spell them, five each.
+    expect(result.requestsBySource).toMatchObject({ "confluence-spaces": 10, confluence: 30 });
+    expect(result.starvedSources).toEqual(["confluence", "confluence-spaces"]);
+    const warnings = logger.at("warn").join("\n");
+    expect(warnings).toContain(
+      "The Confluence space sweep spent its whole allowance of 10 requests (5 for each of 2 annotated spaces)",
+    );
+    expect(warnings).toContain("codeHealth.atlassian.confluence.requestBudgetPerSpace");
+  });
+
+  it("should give the Confluence space sweep nothing to report on when nothing names a space", async () => {
+    // given
+    const confluence = new StubConfluenceEnricher(1);
+    const { command, logger } = await createCommand({ repositories: 2, confluence });
+
+    // when
+    const result = await command.run({ now: NOW });
+
+    // then
+    expect(result.starvedSources).toEqual([]);
+    expect(logger.at("info").join(" ")).not.toContain("confluence-spaces");
+  });
+
+  it("should say what each source spent, by name", async () => {
+    // given
+    // A total says the allowance went somewhere; only the breakdown says
+    // where, which is what an operator sizing the settings needs.
+    const sonar = new StubSonarEnricher(null).withRequestCost(1);
+    const jira = new StubJiraEnricher(4);
+    const collector = new StubVcsCollector().withRequestCost(2);
+    const { command, logger } = await createCommand({
+      repositories: 3,
+      sonarProjectKey: "acme_service",
+      collector,
+      sonar,
+      jira,
+    });
+
+    // when
+    const result = await command.run({ now: NOW });
+
+    // then
+    // Jira is asked twice — once per repository set, once per day — and the
+    // stub spends on both.
+    expect(result.requestsBySource).toEqual({
+      repositories: 6,
+      sonar: 3,
+      wakatime: 0,
+      jira: 8,
+      confluence: 0,
+      "confluence-spaces": 0,
+    });
+    expect(result.requestsSpent).toBe(17);
+    expect(logger.at("info").join(" ")).toContain(
+      "requests spent: repositories=6 sonar=3 jira=8",
+    );
+  });
+
+  it("should say how many repositories it left unvisited and where to raise the allowance", async () => {
+    // given
+    // A boolean folded into a summary line said the pass stopped; nothing
+    // said how far short of the fleet it stopped.
+    const collector = new StubVcsCollector().withRequestCost(2);
+    const { command, logger } = await createCommand({
+      repositories: 5,
+      collector,
+      overrides: { requestBudgetPerRun: 5 },
+    });
+
+    // when
+    const result = await command.run({ now: NOW });
+
+    // then
+    // Two captured in full; the third ran out halfway and was not stored, so
+    // it counts among the ones the next pass takes first.
+    expect(result.captured).toBe(2);
+    expect(result.unvisited).toBe(3);
+    expect(result.budgetExhausted).toBe(true);
+    const warning = logger.at("warn").join(" ");
+    expect(warning).toContain("left 3 of 5 repositories unvisited");
+    expect(warning).toContain("codeHealth.ingestion.requestBudgetPerRun");
+    expect(warning).toContain("go first on the next pass");
+  });
+
+  it("should take the repositories the last pass never reached first", async () => {
+    // given
+    // A fixed order stopped at the same place every night, and the
+    // repositories past it never recovered on their own.
+    const collector = new StubVcsCollector().withRequestCost(2);
+    const { command } = await createCommand({
+      repositories: 4,
+      collector,
+      overrides: { requestBudgetPerRun: 4 },
+    });
+
+    // when
+    await command.run({ now: NOW });
+    await command.run({ now: new Date("2026-08-11T03:00:00.000Z") });
+    await command.run({ now: new Date("2026-08-12T03:00:00.000Z") });
+
+    // then
+    expect(collector.snapshots).toEqual([
+      "component:default/repo-0",
+      "component:default/repo-1",
+      "component:default/repo-2",
+      "component:default/repo-3",
+      "component:default/repo-0",
+      "component:default/repo-1",
+    ]);
+  });
+
+  it("should keep storing snapshots when the Sonar allowance runs out", async () => {
+    // given
+    // Sonar is read beside the provider snapshot, not instead of it. A spent
+    // Sonar allowance costs the rest of the loop its Sonar measures for the
+    // day — said out loud, because a null on a repository with a project
+    // reads as "no project" everywhere else.
+    const metrics: SonarMetrics = {
+      bugs: 1,
+      codeSmells: 0,
+      securityHotspots: 0,
+      vulnerabilities: 0,
+      coverage: 50,
+      duplications: 0,
+      technicalDebt: "0min",
+      technicalDebtMinutes: 0,
+      qualityGateStatus: "OK",
+    };
+    const sonar = new StubSonarEnricher(metrics).withRequestCost(2);
+    const collector = new StubVcsCollector().withRequestCost(1);
+    const { command, store, logger } = await createCommand({
+      repositories: 3,
+      sonarProjectKey: "acme_service",
+      collector,
+      sonar,
+      overrides: { requestBudgetPerRun: 4 },
+    });
+
+    // when
+    const result = await command.run({ now: NOW });
+
+    // then
+    expect(result.captured).toBe(3);
+    expect(result.sonarSkipped).toBe(1);
+    const snapshots = await store.listLatestSnapshots({ day: "2026-08-10" });
+    expect(snapshots.map((snapshot) => snapshot.payload.sonarMetrics)).toEqual([
+      metrics,
+      metrics,
+      null,
+    ]);
+    expect(logger.at("warn").join(" ")).toContain("Sonar was not asked about 1 repositories");
+  });
+
+  it("should store the day's snapshots before the contributor sweeps run", async () => {
+    // given
+    // The allowances bound the requests, not the minutes, and the task's
+    // timeout is shared: a Confluence sweep that walks five hundred version
+    // histories should time out having stored the snapshots, not before the
+    // first one.
+    const confluence = new StubConfluenceEnricher(1);
+    const { command, collector } = await createCommand({ repositories: 3, confluence });
+    let snapshotsBeforeSweep = -1;
+    confluence.sweptAfter = () => {
+      snapshotsBeforeSweep = collector.snapshots.length;
+    };
+
+    // when
+    await command.run({ now: NOW });
+
+    // then
+    expect(snapshotsBeforeSweep).toBe(3);
+  });
+
   it("should stop when the scheduled task is aborted", async () => {
     // given
     const controller = new AbortController();
@@ -493,6 +805,7 @@ describe("CaptureRepositorySnapshots", () => {
       wakaTimeWindow: { historyDays: 30, aiDays: 0 },
       jira: null,
       confluence: null,
+      requestBudgets: REQUEST_BUDGETS,
       identities: new RecordingIdentityObserver(),
       settings: settings(),
       logger,

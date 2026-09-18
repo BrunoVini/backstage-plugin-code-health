@@ -280,6 +280,14 @@ export const codeHealthPlugin = createBackendPlugin({
                   identities: identityObserver,
                   logger: logger.child({ component: "confluence" }),
                 }),
+          // Each optional source spends an allowance of its own during the
+          // pass. The repository loop and Sonar spend the ingestion budget.
+          requestBudgets: {
+            wakaTime: settings.wakaTime.requestBudgetPerRun,
+            jira: settings.jira.requestBudgetPerRun,
+            confluence: settings.confluence.requestBudgetPerRun,
+            confluencePerSpace: settings.confluence.requestBudgetPerSpace,
+          },
           identities: identityObserver,
           settings: settings.ingestion,
           logger: logger.child({ task: SNAPSHOT_TASK_ID }),

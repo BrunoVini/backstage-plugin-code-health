@@ -63,6 +63,8 @@ codeHealth:
     # The expensive half. Off by default.
     includeAiMetrics: false
     aiDaysPerRun: 3
+    # WakaTime's own allowance per snapshot pass.
+    requestBudgetPerRun: 500
 ```
 
 The key is read only by the backend and never reaches a browser. That is the
@@ -92,9 +94,12 @@ is the design, not a bug.
 ## Rate limits and cost
 
 Every request goes through the shared provider gateway: a per-host concurrency
-cap, a per-run request budget, retry with jittered backoff, a circuit breaker,
-and pacing driven by the provider's own rate-limit headers. A WakaTime pass
-costs, per snapshot run:
+cap, retry with jittered backoff, a circuit breaker, and pacing driven by the
+provider's own rate-limit headers. The request allowance is WakaTime's own —
+`requestBudgetPerRun`, 500 by default, room for about 120 members with the AI
+figures on or 500 without — and nothing else in the snapshot pass draws on it,
+so a large organisation costs the pass its coding time and never a repository
+snapshot. A WakaTime pass costs, per snapshot run:
 
 - 2 requests to resolve the dashboard and its members — **once per process**,
   since the membership is memoised for the life of the enricher.

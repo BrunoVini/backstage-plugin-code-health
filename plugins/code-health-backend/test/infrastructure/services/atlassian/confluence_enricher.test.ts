@@ -16,6 +16,7 @@ import {
   aSpacesResponse,
   aVersion,
   aVersionsResponse,
+  CONFLUENCE_BASE,
   ConfluencePageBuilder,
 } from "../../../builders/confluence_page_builder";
 import { aTrackedRepository } from "../../../builders/tracked_repository_builder";
@@ -846,6 +847,29 @@ describe("ConfluenceApiEnricher.fetchContributors", () => {
     for (const cql of queries) expect(cql).toContain('space in ("ENG", "OPS")');
   });
 
+  it("should scope the sweep to a configured space's original key when the configuration names its alias", async () => {
+    // given
+    // CQL matches only the key a space was created with. The spaces API
+    // resolves the new key an administrator gave it, so the sweep asks there
+    // first and queries with what came back.
+    server.onPath("/spaces", () => ({
+      body: aSpacesResponse([{ id: 77, key: "DS", alias: "DATA", homepageId: 900 }]),
+    }));
+    withDefaults();
+    const { enricher } = createEnricher(
+      atlassianSettings({ confluence: { enabled: true, spaceKeys: ["DATA"] } }),
+    );
+
+    // when
+    await enricher.fetchContributors(context());
+
+    // then
+    const queries = server.requestsFor("/rest/api/search").map(cqlOf);
+    expect(queries.length).toBeGreaterThan(0);
+    for (const cql of queries) expect(cql).toContain('space in ("DS")');
+    expect(server.requestsFor("/spaces")).toHaveLength(1);
+  });
+
   it("should ask Confluence nothing at all when the integration is switched off", async () => {
     // given
     withDefaults();
@@ -1138,8 +1162,99 @@ describe("ConfluenceApiEnricher.fetchRepositories", () => {
     );
 
     // then
+    // One request, to learn whether the annotation is an alias of a tracked
+    // space; nothing measured.
     expect(metrics.size).toBe(0);
-    expect(server.requests).toHaveLength(0);
+    expect(server.requestsFor("/spaces")).toHaveLength(1);
+    expect(server.requestsFor("/rest/api/search")).toHaveLength(0);
+  });
+
+  it("should query a space by its original key when the annotation names its alias", async () => {
+    // given
+    // The spaces API resolves the alias but reports the space under its
+    // original key, which is the only one CQL matches. Indexed by what came
+    // back, the lookup missed every annotation copied from a renamed space's
+    // URL, and every count then ran against a key CQL does not know.
+    searchAnswers([{ when: () => true, body: aSearchResponse({ totalSize: 3 }) }]);
+    server.onPath("/spaces", () => ({
+      body: aSpacesResponse([
+        { id: 77, key: "DS", alias: "DATA", name: "Data platform", homepageId: 900 },
+      ]),
+    }));
+    withDefaults();
+    const { enricher, logger } = createEnricher();
+
+    // when
+    const metrics = await enricher.fetchRepositories(
+      [aConfluenceRepository("repo-data", "DATA")],
+      context(),
+    );
+
+    // then
+    const queries = server.requestsFor("/rest/api/search").map(cqlOf);
+    expect(queries.length).toBeGreaterThan(0);
+    for (const cql of queries) expect(cql).toContain('space in ("DS")');
+    // Reported under the key the annotation carries, with the name resolved.
+    expect(metrics.get("repo-data")?.space).toEqual({
+      key: "DATA",
+      name: "Data platform",
+      url: `${CONFLUENCE_BASE}/spaces/DATA`,
+    });
+    expect(logger.at("warn")).toEqual([]);
+  });
+
+  it("should recognise a tracked space whichever of its keys the annotation and the configuration use", async () => {
+    // given
+    // The allow-list names the original key and the annotation the alias, or
+    // the other way round: both name one space, and Confluence is the one
+    // that can say so.
+    searchAnswers([{ when: () => true, body: aSearchResponse({ totalSize: 3 }) }]);
+    server.onPath("/spaces", () => ({
+      body: aSpacesResponse([{ id: 77, key: "DS", alias: "DATA", homepageId: 900 }]),
+    }));
+    withDefaults();
+    const byOriginal = createEnricher(
+      atlassianSettings({ confluence: { enabled: true, spaceKeys: ["DS"] } }),
+    ).enricher;
+    const byAlias = createEnricher(
+      atlassianSettings({ confluence: { enabled: true, spaceKeys: ["data"] } }),
+    ).enricher;
+
+    // when
+    const aliasAnnotated = await byOriginal.fetchRepositories(
+      [aConfluenceRepository("repo-data", "DATA")],
+      context(),
+    );
+    const originalAnnotated = await byAlias.fetchRepositories(
+      [aConfluenceRepository("repo-ds", "DS")],
+      context(),
+    );
+
+    // then
+    expect([...aliasAnnotated.keys()]).toEqual(["repo-data"]);
+    expect([...originalAnnotated.keys()]).toEqual(["repo-ds"]);
+  });
+
+  it("should say so when Confluence lists no space for an annotation", async () => {
+    // given
+    // The counts are taken anyway, in case CQL knows a key the spaces API did
+    // not — but a space nobody can find is the one case where every figure
+    // comes back as a quiet quarter, and nothing on screen could tell.
+    spaceAnswers();
+    withDefaults();
+    const { enricher, logger } = createEnricher();
+
+    // when
+    const metrics = await enricher.fetchRepositories(
+      [aConfluenceRepository("repo-eng", "ENG")],
+      context(),
+    );
+
+    // then
+    expect(metrics.get("repo-eng")?.totalPages).toBe(120);
+    const warning = logger.at("warn").join(" ");
+    expect(warning).toContain("lists no space with the key ENG");
+    expect(warning).toContain("component:default/repo-eng");
   });
 
   it("should still report the counts when the space itself could not be read", async () => {
