@@ -1,3 +1,0 @@
-kind: 'Changed'
-body: 'changed the owned-repositories card on a contributor''s page to read the same select-filter wording and the same CI predicate as the repositories table, from one shared list, so a filter picked on the tab is the same filter after clicking into a person'
-time: '2026-09-18T20:09:41.807588337Z'

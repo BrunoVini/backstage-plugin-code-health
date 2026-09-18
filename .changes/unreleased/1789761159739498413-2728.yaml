@@ -1,3 +1,0 @@
-kind: 'Added'
-body: 'added `codeHealth.expectedDefaultBranch` so the Default Branch warning and its audit measure against the branch the fleet standardised on rather than always against `main`'
-time: '2026-09-18T19:52:39.739460279Z'
