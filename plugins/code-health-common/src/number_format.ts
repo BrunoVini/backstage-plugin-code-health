@@ -53,7 +53,9 @@ const UNMEASURED = "—";
  *
  * `new Intl.NumberFormat(...)` resolves a locale and builds a pattern on every
  * call, and the repositories table alone formats several hundred figures per
- * render. There are four shapes in the whole plugin, so the cache never grows.
+ * render. A shape is one (minimum, maximum) pair, and the call sites ask for a
+ * handful of them, so the cache is bounded by the vocabulary below rather than
+ * by anything a caller can grow.
  */
 const formatters = new Map<string, Intl.NumberFormat>();
 
@@ -110,8 +112,13 @@ export const formatDecimal = (value: number, maximumFractionDigits = 1): string 
  * down a table aligns on the point and is scanned as one shape; the same
  * column with the zeros trimmed has to be read a row at a time.
  */
-export const formatFixed = (value: number, fractionDigits = 1): string =>
-  say(value, fractionDigits, fractionDigits);
+export const formatFixed = (value: number, fractionDigits = 1): string => {
+  // Floored the way {@link formatDecimal} floors its own argument: `Intl`
+  // throws a `RangeError` on a negative digit count, and a formatter that
+  // throws out of a table cell takes the whole row's render with it.
+  const digits = Math.max(0, fractionDigits);
+  return say(value, digits, digits);
+};
 
 /**
  * A percentage, grouped, with up to `maximumFractionDigits` decimals: `62.3%`.

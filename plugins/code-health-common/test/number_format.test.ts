@@ -102,6 +102,15 @@ describe("formatFixed", () => {
     expect(formatFixed(1204.5, 2)).toBe("1,204.50");
   });
 
+  it("should treat a negative digit count as none, rather than throwing", () => {
+    // given
+    // `Intl` raises a `RangeError` on one, and a formatter that throws out of
+    // a table cell takes the whole row's render with it.
+
+    // when / then
+    expect(formatFixed(1204.5, -2)).toBe("1,205");
+  });
+
   it("should print an em dash for anything that is not a number", () => {
     // given / when / then
     expect(formatFixed(Number.POSITIVE_INFINITY)).toBe("—");
