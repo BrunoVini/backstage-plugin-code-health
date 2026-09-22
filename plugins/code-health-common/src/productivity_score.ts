@@ -58,8 +58,18 @@ import { formatDuration } from "./wakatime_metrics";
  * - **What was not measured is left out, never scored as zero.** Somebody whose
  *   pipeline never ran has no success rate; somebody working on a repository
  *   with no Sonar project has an unknown gate; somebody with no WakaTime
- *   account linked to them has no coding time. Their weight goes to the
- *   components that could be measured, and `evidence` says how much survived.
+ *   account linked to them has no coding time; somebody nobody asked to review
+ *   anything has no review rate. Their weight goes to the components that could
+ *   be measured, and `evidence` says how much survived.
+ *
+ *   Reviews are the case that made this rule worth stating twice. On a team that
+ *   routes review to leads, or to whoever owns the project, everybody else is
+ *   never added to a reviewer list at all — and reading that as "reviewed
+ *   nothing" scored a structural zero against people for a duty they were never
+ *   given, capping their score below the rest of the team over work nobody asked
+ *   them to do. Opportunity is what separates the two, and both providers report
+ *   it: an invitation carrying no vote. Somebody who WAS asked and did not
+ *   answer stays measured, and scores accordingly.
  * - **Which components exist at all is decided by configuration.** An
  *   integration the backend was never configured with contributes no component
  *   rather than an unmeasured one, and the rest are renormalised over what is
@@ -177,7 +187,13 @@ export const fleetReferenceOf = (
       days,
       versionControl((row) => row.pullRequestsMerged),
     ),
-    reviewsGiven: meanRate(contributors, days, versionControl((row) => row.reviewsGiven)),
+    // Over the people who were asked, not over everybody who turned up. With
+    // the rest folded in, the mean is divided by a crowd that could not have
+    // contributed to it, which reads as a team that barely reviews and sets a
+    // bar the actual reviewers clear without trying.
+    reviewsGiven: meanRate(contributors, days, (row) =>
+      measuredByVersionControl(row) && row.reviewsRequested > 0 ? row.reviewsGiven : null,
+    ),
     linesOfCode: meanRate(contributors, days, (row) =>
       row.churnUnit === "lines" ? row.linesOfCode : null,
     ),
@@ -330,6 +346,38 @@ const churnOf = (
     );
   }
   return unmeasuredComponent(definition, "the provider reported no churn figure");
+};
+
+/**
+ * Reviews given, against twice the team's mean rate — but only for somebody who
+ * was asked for one.
+ *
+ * Unmeasured with no invitation, for the same reason `pipelineOf` is unmeasured
+ * with no decided run: the figure is absent, not bad. This is the one relative
+ * component whose opportunity is handed out by other people, so it is the one
+ * where "did nothing" and "was given nothing to do" are genuinely different
+ * facts — and the only one where the provider says which it was.
+ *
+ * Being asked and not answering stays measured, at whatever rate the answers
+ * came to. The component still has something to say about somebody sitting on a
+ * queue of review requests.
+ */
+const reviewsGivenOf = (
+  definition: ScoreComponentDefinition,
+  summary: ContributorSummary,
+  reference: FleetReference,
+): ScoreComponent => {
+  if (summary.reviewsRequested <= 0) {
+    return unmeasuredComponent(definition, "nobody asked this person to review anything");
+  }
+
+  return relative(
+    definition,
+    summary.reviewsGiven,
+    reference.reviewsGiven,
+    reference.days,
+    "review",
+  );
 };
 
 const pipelineOf = (
@@ -580,18 +628,7 @@ const READINGS: Readonly<Record<ProductivityComponentId, ComponentReading>> = {
     ),
   },
   churn: { integration: null, read: versionControlReading(churnOf) },
-  reviewsGiven: {
-    integration: null,
-    read: versionControlReading((definition, summary, reference) =>
-      relative(
-        definition,
-        summary.reviewsGiven,
-        reference.reviewsGiven,
-        reference.days,
-        "review",
-      ),
-    ),
-  },
+  reviewsGiven: { integration: null, read: versionControlReading(reviewsGivenOf) },
   pipelineSuccessRate: { integration: null, read: versionControlReading(pipelineOf) },
   qualityGate: { integration: null, read: qualityGateOf },
   coverage: { integration: null, read: coverageOf },

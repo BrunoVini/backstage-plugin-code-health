@@ -667,10 +667,11 @@ describe("AzureDevOpsCollector", () => {
       expect(result.events.find((event) => event.kind === "build")?.actorKey).toBe("author@example.com");
     });
 
-    it("should not count a reviewer who never voted", async () => {
+    it("should keep a reviewer who never voted as an invitation rather than a review", async () => {
       // given
       // Azure DevOps lists everyone a policy or a person added, and most of
-      // them never look.
+      // them never look. That is the fact the score needs: it separates
+      // somebody nobody asked from somebody who was asked and did not answer.
       withClosed(
         completed({
           reviewers: [
@@ -687,7 +688,11 @@ describe("AzureDevOpsCollector", () => {
 
       // then
       const reviews = result.events.filter((event) => event.kind === "pr_review");
-      expect(reviews.map((event) => event.actorKey)).toEqual(["approver@example.com"]);
+      expect(reviews.map((event) => [event.actorKey, event.outcome])).toEqual([
+        ["approver@example.com", "approved"],
+        ["bystander@example.com", "no_vote"],
+        ["silent@example.com", "no_vote"],
+      ]);
     });
 
     it("should not count the creator's own vote as a review", async () => {
@@ -949,8 +954,9 @@ describe("AzureDevOpsCollector", () => {
       expect(byKind("pull_request").find((event) => event.externalId === "1:closed")?.outcome).toBe(
         "abandoned",
       );
-      // A reviewer with no vote never reviewed, so no review is recorded.
-      expect(byKind("pr_review")).toEqual([]);
+      // A reviewer with no vote never reviewed, so the event is recorded as an
+      // invitation — opportunity for the score, never a review.
+      expect(byKind("pr_review").map((event) => event.outcome)).toEqual(["no_vote"]);
       expect(byKind("build")[0]).toMatchObject({ outcome: null, actorKey: null });
     });
 

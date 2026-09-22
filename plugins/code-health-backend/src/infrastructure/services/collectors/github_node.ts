@@ -69,6 +69,22 @@ export interface GithubPullRequestNode {
     readonly parents?: { readonly totalCount?: number };
   } | null;
   readonly reviews?: { readonly nodes?: readonly (GithubReviewNode | null)[] };
+  /**
+   * Reviewers still waiting to answer. GitHub drops a request the moment its
+   * review is submitted, so on a closed pull request this holds exactly the
+   * people who were asked and never did — the complement of `reviews`, which is
+   * what makes the two together the full set of who was asked.
+   */
+  readonly reviewRequests?: {
+    readonly nodes?: readonly (GithubReviewRequestNode | null)[];
+  };
+}
+
+export interface GithubReviewRequestNode {
+  readonly requestedReviewer?: {
+    readonly login?: string;
+    readonly avatarUrl?: string;
+  } | null;
 }
 
 export interface GithubHistoryResponse {

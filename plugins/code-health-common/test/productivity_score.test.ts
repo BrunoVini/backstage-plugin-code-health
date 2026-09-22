@@ -36,6 +36,7 @@ const aContributor = (overrides: Partial<ContributorSummary> = {}): ContributorS
   pullRequestsOpened: 4,
   pullRequestsMerged: 4,
   reviewsGiven: 6,
+  reviewsRequested: 6,
   reviewsApproved: 5,
   reviewsRejected: 1,
   prApprovalRate: 83.3,
@@ -871,5 +872,58 @@ describe("computeProductivityScore", () => {
     // they resolved came back, which is full marks whoever else is on the team.
     expect(componentById(score, "reopened")?.normalized).toBe(1);
     expect(score.evidence).toBe(1);
+  });
+});
+
+describe("reviews given, against the opportunity to give them", () => {
+  it("should leave the component unmeasured when nobody asked this person to review", () => {
+    // given
+    // A team that routes review to leads never adds anybody else to a reviewer
+    // list. Reading that as "reviewed nothing" scored a structural zero for a
+    // duty they were never given.
+    const summary = aContributor({ reviewsGiven: 0, reviewsRequested: 0 });
+    const reference = fleetReferenceOf([aContributor(), summary], 7);
+
+    // when
+    const score = computeProductivityScore(summary, reference, NO_INTEGRATIONS);
+    const reviews = score.components.find((component) => component.id === "reviewsGiven");
+
+    // then
+    expect(reviews?.normalized).toBeNull();
+    expect(reviews?.detail).toBe("nobody asked this person to review anything");
+    expect(score.evidence).toBeLessThan(1);
+  });
+
+  it("should measure the component at zero when this person was asked and did not answer", () => {
+    // given
+    const summary = aContributor({ reviewsGiven: 0, reviewsRequested: 4 });
+    const reference = fleetReferenceOf([aContributor(), summary], 7);
+
+    // when
+    const score = computeProductivityScore(summary, reference, NO_INTEGRATIONS);
+    const reviews = score.components.find((component) => component.id === "reviewsGiven");
+
+    // then
+    expect(reviews?.normalized).toBe(0);
+    expect(reviews?.value).toBe(0);
+  });
+
+  it("should take the fleet mean over the people who were asked, not over everybody", () => {
+    // given
+    // Six reviews between two people who were asked; the four who were never
+    // asked are not a measurement of a team that reviews little.
+    const asked = [
+      aContributor({ reviewsGiven: 4, reviewsRequested: 4 }),
+      aContributor({ reviewsGiven: 2, reviewsRequested: 2 }),
+    ];
+    const neverAsked = Array.from({ length: 4 }, () =>
+      aContributor({ reviewsGiven: 0, reviewsRequested: 0 }),
+    );
+
+    // when
+    const reference = fleetReferenceOf([...asked, ...neverAsked], 3);
+
+    // then
+    expect(reference.reviewsGiven).toBe(1);
   });
 });

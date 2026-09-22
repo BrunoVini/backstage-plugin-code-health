@@ -42,6 +42,8 @@ export interface ContributorTotals {
   pullRequestsOpened: number;
   pullRequestsMerged: number;
   reviewsGiven: number;
+  /** Reviews this person was asked for, voted on or not. The component's opportunity. */
+  reviewsRequested: number;
   reviewsApproved: number;
   reviewsRejected: number;
   pipelineRuns: number;
@@ -86,6 +88,7 @@ const empty = (): ContributorTotals => ({
   pullRequestsOpened: 0,
   pullRequestsMerged: 0,
   reviewsGiven: 0,
+  reviewsRequested: 0,
   reviewsApproved: 0,
   reviewsRejected: 0,
   pipelineRuns: 0,
@@ -110,8 +113,18 @@ const remember = (
   });
 };
 
+/**
+ * A review event carrying no vote: somebody was put on a reviewer list and
+ * never answered. It is the opportunity signal, never a contribution.
+ */
+const isReviewInvitation = (event: CodeHealthEvent): boolean =>
+  event.kind === "pr_review" && event.outcome === "no_vote";
+
 const applyEvent = (totals: ContributorTotals, event: CodeHealthEvent): void => {
-  totals.repositories.add(event.repositoryId);
+  // Being asked to review is not activity in the repository, so it does not put
+  // the person in it. Only the vote does, and `repositories` is what the table
+  // prints as the reach of somebody's week.
+  if (!isReviewInvitation(event)) totals.repositories.add(event.repositoryId);
   if (event.actorName) totals.displayName = event.actorName;
   if (event.actorAvatarUrl) totals.avatarUrl = event.actorAvatarUrl;
 
@@ -135,6 +148,11 @@ const applyEvent = (totals: ContributorTotals, event: CodeHealthEvent): void => 
       }
       break;
     case "pr_review":
+      // Every review event is an opportunity; only the ones carrying a vote are
+      // a review. A provider reports both in one reviewer list, so the
+      // distinction lives here rather than in each collector.
+      totals.reviewsRequested += 1;
+      if (event.outcome === "no_vote") break;
       totals.reviewsGiven += 1;
       if (event.outcome === "approved" || event.outcome === "approved_with_suggestions") {
         totals.reviewsApproved += 1;
@@ -332,8 +350,21 @@ export const accumulateContributors = (
     return byPerson.get(input.people.keyOf(identity));
   };
 
+  // Contributions first, invitations second. An invitation must never be the
+  // reason a row exists: a person who was added to a reviewer list and did
+  // nothing else is not a contributor, and a row of zeros would still carry a
+  // name onto the table and a zero into every fleet mean — the same reason an
+  // excluded account accumulates no row at all. Splitting the passes also keeps
+  // the outcome independent of the order the provider happened to return events
+  // in, which a single pass with a create-only-on-contribution rule would not.
+  const invitations: CodeHealthEvent[] = [];
+
   for (const event of input.events) {
     if (!event.actorKey) continue;
+    if (isReviewInvitation(event)) {
+      invitations.push(event);
+      continue;
+    }
     const identity: IdentityRef = {
       source: "vcs",
       sourceKey: normalizeSourceKey(event.actorKey),
@@ -341,6 +372,18 @@ export const accumulateContributors = (
     const totals = totalsFor(identity);
     if (totals === undefined) continue;
     remember(totals, identity, event.actorName);
+    applyEvent(totals, event);
+  }
+
+  for (const event of invitations) {
+    if (!event.actorKey) continue;
+    const identity: IdentityRef = {
+      source: "vcs",
+      sourceKey: normalizeSourceKey(event.actorKey),
+    };
+    if (!input.people.isMeasured(identity)) continue;
+    const totals = byPerson.get(input.people.keyOf(identity));
+    if (totals === undefined) continue;
     applyEvent(totals, event);
   }
 
@@ -416,6 +459,7 @@ export const aggregateContributorSummaries = (
         pullRequestsOpened: totals.pullRequestsOpened,
         pullRequestsMerged: totals.pullRequestsMerged,
         reviewsGiven: totals.reviewsGiven,
+        reviewsRequested: totals.reviewsRequested,
         reviewsApproved: totals.reviewsApproved,
         reviewsRejected: totals.reviewsRejected,
         prApprovalRate: computeRate(totals.reviewsApproved, totals.reviewsGiven),
@@ -470,6 +514,7 @@ export const zeroContributorSummary = (
   pullRequestsOpened: 0,
   pullRequestsMerged: 0,
   reviewsGiven: 0,
+  reviewsRequested: 0,
   reviewsApproved: 0,
   reviewsRejected: 0,
   prApprovalRate: 0,

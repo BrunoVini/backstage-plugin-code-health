@@ -17,6 +17,7 @@ const aContributor = (identities: ContributorSummary["identities"]): Contributor
   pullRequestsOpened: 0,
   pullRequestsMerged: 0,
   reviewsGiven: 0,
+  reviewsRequested: 0,
   reviewsApproved: 0,
   reviewsRejected: 0,
   prApprovalRate: 0,

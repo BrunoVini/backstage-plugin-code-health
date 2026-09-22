@@ -142,6 +142,9 @@ query CodeHealthPullRequests($search: String!, $cursor: String) {
         reviews(first: 50) {
           nodes { id state submittedAt author { login avatarUrl url } }
         }
+        reviewRequests(first: 50) {
+          nodes { requestedReviewer { ... on User { login avatarUrl } } }
+        }
       }
     }
   }
@@ -815,6 +818,31 @@ export class GithubCollector implements VcsCollector {
         deletions: null,
         changedFiles: null,
         payload: { pullRequestNumber: node.number ?? null, state: review.state ?? null },
+      });
+    }
+
+    // Everybody still on the request list was asked and never answered. They
+    // carry `no_vote`, which the aggregation counts as opportunity rather than
+    // as a review — the difference between somebody nobody asked and somebody
+    // who let one sit. A request that was answered is already gone from this
+    // list, so the two loops cannot count the same person twice.
+    for (const request of node.reviewRequests?.nodes ?? []) {
+      const login = request?.requestedReviewer?.login;
+      if (!login || login.toLowerCase() === authorLogin) continue;
+
+      events.push({
+        repositoryId: repository.id,
+        kind: "pr_review",
+        externalId: `${node.id}:requested:${login.toLowerCase()}`,
+        occurredAt,
+        actorKey: login.toLowerCase(),
+        actorName: login,
+        actorAvatarUrl: request?.requestedReviewer?.avatarUrl ?? null,
+        outcome: "no_vote",
+        additions: null,
+        deletions: null,
+        changedFiles: null,
+        payload: { pullRequestNumber: node.number ?? null, state: null },
       });
     }
 

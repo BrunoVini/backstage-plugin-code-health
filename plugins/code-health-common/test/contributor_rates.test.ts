@@ -26,6 +26,7 @@ const aContributor = (overrides: Partial<ContributorSummary> = {}): ContributorS
   pullRequestsOpened: 14,
   pullRequestsMerged: 7,
   reviewsGiven: 21,
+  reviewsRequested: 21,
   reviewsApproved: 0,
   reviewsRejected: 0,
   prApprovalRate: 0,

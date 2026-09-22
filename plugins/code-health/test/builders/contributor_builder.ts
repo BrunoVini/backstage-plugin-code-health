@@ -33,6 +33,7 @@ export class ContributorBuilder {
       pullRequestsOpened: 10,
       pullRequestsMerged: 8,
       reviewsGiven: 10,
+      reviewsRequested: 10,
       reviewsApproved: 5,
       reviewsRejected: 2,
       prApprovalRate: 50,
@@ -93,6 +94,11 @@ export class ContributorBuilder {
 
   withCommits(commits: number): this {
     this.props = { ...this.props, commits };
+    return this;
+  }
+
+  withReviewsRequested(reviewsRequested: number): this {
+    this.props = { ...this.props, reviewsRequested };
     return this;
   }
 

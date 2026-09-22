@@ -80,6 +80,24 @@ export interface ContributorSummary {
    * reviewer who was added and never voted did not review either.
    */
   readonly reviewsGiven: number;
+  /**
+   * Other people's pull requests this contributor was asked to review, whether
+   * or not they went on to vote. {@link reviewsGiven} is the subset they acted
+   * on, so `reviewsRequested - reviewsGiven` is what they were handed and left.
+   *
+   * This is the component's *opportunity*, and it is why a person who reviews
+   * nothing is not automatically read as a person who declined to. Somebody
+   * nobody asked had no chance to review, the same way somebody whose pipeline
+   * never ran has no success rate — and the score treats both alike, leaving
+   * the component unmeasured rather than scoring it zero. Somebody who WAS
+   * asked and did not answer is measured, and scores accordingly.
+   *
+   * An invitation alone never creates a contributor: a row that exists only
+   * because somebody was added to a reviewer list would be a name on the table
+   * who did nothing, and it would join the fleet reference every relative score
+   * is read against. The aggregation applies invitations to existing rows only.
+   */
+  readonly reviewsRequested: number;
   readonly reviewsApproved: number;
   readonly reviewsRejected: number;
   /** `reviewsApproved / reviewsGiven` as a percentage, or 0 with no reviews. */

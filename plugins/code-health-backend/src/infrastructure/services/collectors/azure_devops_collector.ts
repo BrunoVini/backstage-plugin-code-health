@@ -784,13 +784,20 @@ export class AzureDevOpsCollector implements VcsCollector {
   }
 
   /**
-   * Reviews, from the votes on a closed pull request.
+   * Reviews and review invitations, from the reviewer list of a closed pull
+   * request.
    *
-   * A reviewer who never voted did not review: Azure DevOps lists everyone a
-   * policy or a person added, and most of them never look. The author's own
-   * vote is not a review either, whatever a policy allows. Group reviewers
-   * exist to carry a required-reviewer policy and never cast a vote a person
-   * is accountable for.
+   * A reviewer who never voted did not review — that is `no_vote`, and the
+   * aggregation counts it as an opportunity rather than as a review. Azure
+   * DevOps lists everyone a policy or a person added and most of them never
+   * look, which is precisely the fact the score needs: it separates somebody
+   * nobody asked from somebody who was asked and did not answer, and only the
+   * second of those has anything to answer for.
+   *
+   * The author's own vote is not a review either, whatever a policy allows.
+   * Group reviewers exist to carry a required-reviewer policy and never cast a
+   * vote a person is accountable for, so neither is an invitation a person
+   * received.
    */
   private reviewEvents(
     repository: TrackedRepository,
@@ -799,9 +806,12 @@ export class AzureDevOpsCollector implements VcsCollector {
   ): CodeHealthEvent[] {
     const author = identityKey(node.createdBy);
 
+    // A reviewer who never voted is kept, as `no_vote`, rather than dropped.
+    // They are what tells the score the difference between somebody who had
+    // nothing to review and somebody who was handed one and left it — and
+    // `EventOutcome` has carried `no_vote` all along for exactly this shape.
     return (node.reviewers ?? [])
       .filter((reviewer) => reviewer.isContainer !== true)
-      .filter((reviewer) => (reviewer.vote ?? 0) !== 0)
       .filter((reviewer) => {
         const key = identityKey(reviewer);
         return key !== null && key !== author;
