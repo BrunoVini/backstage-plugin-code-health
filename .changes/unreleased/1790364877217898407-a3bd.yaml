@@ -1,3 +1,0 @@
-kind: 'Fixed'
-body: 'removed the unused contributor query-parameter re-export that failed the Knip CI check'
-time: '2026-09-25T19:34:37.217763705Z'

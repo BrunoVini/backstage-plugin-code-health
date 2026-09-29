@@ -13,6 +13,22 @@ nothing.
 
 ## [Unreleased]
 
+## [5.3.0] - 2026-09-29
+
+### Added
+
+- added a role to every person — **engineer** or **lead** — that decides which weights the productivity score is read through: an engineer's leans on commits, merged pull requests and churn, a lead's on reviews given and documentation, because a lead is expected to review more than they write, with reliability and the quality of the code touched left where they were and both sets adding up to the same total. Everybody is an engineer until an administrator says otherwise; the role is a column on the Contributors tab and a chip beside the name on a person's page, and a role assigned to any of somebody's accounts follows every account of theirs, retroactively across every window ever collected. `ContributorSummary` carries the role as a new required `role` field and `GetAccessResponse` a new required `canManageScoring`; both are *response* shapes — the backend fills them, the browser reads them, and a frontend against an older backend reads the second as false — so every consumer keeps compiling and keeps working, and only something that *constructs* one by hand, such as a test fixture or a stub backend, has to supply the two fields, which is the same shape of change `ownerRef` and `reviews` were
+- added optional Claude Code token usage with identity linking, exclusions, period averages and trends, without changing productivity scores
+- added the **Productivity score weights** editor to the page header for administrators — every component beside its weight for each role, the share of the score that weight comes to on this install, a restore-defaults per role and one save — with `GET /v1/productivity/weights` answering everybody so the table in the browser and a person's page on the backend fold the same numbers, and `PUT` / `DELETE /v1/productivity/weights/:role` and `PUT /v1/contributors/:key/role` behind a new `code-health.scoring.manage` permission and the same `codeHealth.administrators` list as the reset, so a policy can hand the reset and the scoring to different people; `GET /v1/access` reports `canManageScoring` beside `canResetIngestion`
+
+### Changed
+
+- changed the contributors table to open sorted on the productivity score, highest first, with a person nothing could score last whichever way the column is turned; it used to open on code churn, which put whoever moved the most lines first whatever the rest of their row said
+
+### Removed
+
+- removed the unused contributor query-parameter re-export that failed the Knip CI check
+
 ## [5.2.0] - 2026-09-18
 
 ### Added
