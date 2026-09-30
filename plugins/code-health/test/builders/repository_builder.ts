@@ -106,8 +106,14 @@ export class RepositoryBuilder {
     return this;
   }
 
-  /** Sets coverage, and the gate alongside it so the row stays coherent. */
-  withCoverage(coverage: number, qualityGateStatus: QualityGateStatus = "OK"): this {
+  /**
+   * Sets coverage, and the gate alongside it so the row stays coherent.
+   *
+   * `null` is a project SonarQube measures but reports no coverage for, which
+   * is a different row from one with no Sonar project at all — the latter is
+   * what `build()` gives on its own.
+   */
+  withCoverage(coverage: number | null, qualityGateStatus: QualityGateStatus = "OK"): this {
     this.props = {
       ...this.props,
       sonarMetrics: {

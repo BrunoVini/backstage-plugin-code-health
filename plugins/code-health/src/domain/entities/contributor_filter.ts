@@ -70,7 +70,15 @@ const getSonarNumericValue = (contributor: ContributorSummary, field: Contributo
     case "vulnerabilities":
       return contributor.sonarMetrics.vulnerabilities;
     case "coverage":
-      return contributor.sonarMetrics.coverage;
+      // A sort key, and only a sort key: this function has one caller, the
+      // comparator below, and the coverage column carries no numeric filter,
+      // so nothing here decides whether a row is measured. The guard above
+      // already orders every unmeasured Sonar figure at zero for all seven
+      // fields, and a row with no coverage measure orders where a row with no
+      // Sonar project already does. Giving the unmeasured their own place is
+      // worth doing, but it is one change to all seven fields and to the
+      // comparator's direction handling, not to this branch.
+      return contributor.sonarMetrics.coverage ?? 0;
     case "duplications":
       return contributor.sonarMetrics.duplications;
     case "technicalDebt":

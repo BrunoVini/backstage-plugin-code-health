@@ -239,10 +239,14 @@ export interface CoverageStats {
   readonly belowTarget: number;
 }
 
+// A project that reports no coverage is left out rather than counted as zero,
+// so the median and the below-target count describe the projects coverage was
+// actually measured for.
 const coverageValues = (repositories: readonly RepositorySummary[]): number[] =>
-  repositories.flatMap((repository) =>
-    repository.sonarMetrics === null ? [] : [repository.sonarMetrics.coverage],
-  );
+  repositories.flatMap((repository) => {
+    const coverage = repository.sonarMetrics?.coverage ?? null;
+    return coverage === null ? [] : [coverage];
+  });
 
 const round = (value: number): number => Math.round(value * 10) / 10;
 
@@ -321,23 +325,25 @@ export const lowestCoverageRepositories = (
   repositories: readonly RepositorySummary[],
 ): RankedItem[] =>
   repositories
-    .flatMap((repository) =>
-      repository.sonarMetrics === null
-        ? []
-        : [
-            {
-              id: repository.id,
-              label: repository.name,
-              value: repository.sonarMetrics.coverage,
-              detail:
-                repository.sonarMetrics.qualityGateStatus === "ERROR"
-                  ? "gate failing"
-                  : plural(repository.sonarMetrics.bugs, "bug"),
-              entityRef: repository.entityRef,
-              avatarUrl: null,
-            },
-          ],
-    )
+    .flatMap((repository) => {
+      const sonar = repository.sonarMetrics;
+      // A project with no coverage measure is unmeasured for the same reason a
+      // project with no Sonar project is: there is nothing to rank it by.
+      if (sonar === null || sonar.coverage === null) return [];
+      return [
+        {
+          id: repository.id,
+          label: repository.name,
+          value: sonar.coverage,
+          detail:
+            sonar.qualityGateStatus === "ERROR"
+              ? "gate failing"
+              : plural(sonar.bugs, "bug"),
+          entityRef: repository.entityRef,
+          avatarUrl: null,
+        },
+      ];
+    })
     .sort((left, right) => left.value - right.value || left.label.localeCompare(right.label))
     .slice(0, RANK_SIZE);
 

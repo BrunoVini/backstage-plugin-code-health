@@ -551,6 +551,32 @@ describe("computeProductivityScore", () => {
     expect(componentById(score, "coverage")).toMatchObject({ value: 40, normalized: 0.5 });
   });
 
+  it("should leave coverage unmeasured where no repository reports it", () => {
+    // given
+    // A project SonarQube publishes no `coverage` measure for — Terraform,
+    // configuration, anything with no executable lines — is not a project at
+    // zero percent, and scoring it as one puts the row at the bottom of a
+    // scale it was never on.
+    const unreported = aContributor({ sonarMetrics: sonar({ coverage: null }) });
+    const reported = aContributor({ sonarMetrics: sonar({ coverage: 40 }) });
+
+    // when
+    const score = computeProductivityScore(unreported, fleetReferenceOf([unreported], 1));
+    const reference = computeProductivityScore(reported, fleetReferenceOf([reported], 1));
+
+    // then
+    expect(componentById(score, "coverage")?.normalized).toBeNull();
+    // the weight it would have carried leaves the denominator entirely, rather
+    // than staying in it with a zero
+    const coverageWeight = componentById(reference, "coverage")?.weight ?? 0;
+    expect(coverageWeight).toBeGreaterThan(0);
+    expect(score.evidence).toBeCloseTo(reference.evidence - coverageWeight, 2);
+    // and the row scores higher than the same row read as zero percent covered
+    const asZero = aContributor({ sonarMetrics: sonar({ coverage: 0 }) });
+    const zeroScore = computeProductivityScore(asZero, fleetReferenceOf([asZero], 1));
+    expect(score.value ?? 0).toBeGreaterThan(zeroScore.value ?? 0);
+  });
+
   it("should leave Sonar components unmeasured without a project or a gate", () => {
     // given
     const unmeasured = aContributor({ sonarMetrics: null });

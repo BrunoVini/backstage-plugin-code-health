@@ -177,6 +177,22 @@ describe("computeRepositoryHealthScore", () => {
     expect(componentById(score, "qualityGate")).toMatchObject({ value: 0, normalized: 0 });
   });
 
+  it("should leave coverage unmeasured where the project reports none", () => {
+    // given
+    // A project with no executable lines — Terraform, configuration — has no
+    // coverage measure, which is not the same as covering nothing.
+    const repository = aRepository({ sonarMetrics: sonar({ coverage: null }) });
+
+    // when
+    const score = computeRepositoryHealthScore(repository);
+
+    // then
+    expect(componentById(score, "coverage")?.normalized).toBeNull();
+    // and the project is not ranked below one that genuinely covers nothing
+    const covered = aRepository({ sonarMetrics: sonar({ coverage: 0 }) });
+    expect(score.value ?? 0).toBeGreaterThan(computeRepositoryHealthScore(covered).value ?? 0);
+  });
+
   it("should leave a gate Sonar does not report unmeasured", () => {
     // given
     const repository = aRepository({ sonarMetrics: sonar({ qualityGateStatus: "NONE" }) });

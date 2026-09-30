@@ -79,6 +79,9 @@ const coverageOf = (summary: RepositorySummary): ScoreComponent => {
   const definition = REPOSITORY_HEALTH_COMPONENTS.coverage;
   const sonar = summary.sonarMetrics;
   if (sonar === null) return unmeasuredComponent(definition, NO_SONAR);
+  if (sonar.coverage === null) {
+    return unmeasuredComponent(definition, "this project reports no coverage");
+  }
   return measuredComponent(
     definition,
     sonar.coverage,

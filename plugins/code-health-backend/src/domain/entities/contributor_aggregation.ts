@@ -192,6 +192,21 @@ const aggregateSonar = (
   const mean = (pick: (metrics: SonarMetrics) => number) =>
     Math.round((sum(pick) / present.length) * 10) / 10;
 
+  // Averaged over the repositories that actually report coverage, not over
+  // every repository touched. A project with no coverage measure — Terraform,
+  // configuration, anything with no executable lines — would otherwise enter
+  // the mean as a zero and drag a row down for repositories that were never
+  // on the scale. With nothing reporting, the row says unknown rather than
+  // none.
+  const covered = present.flatMap((metrics) =>
+    metrics.coverage === null ? [] : [metrics.coverage],
+  );
+  const coverage =
+    covered.length === 0
+      ? null
+      : Math.round((covered.reduce((total, value) => total + value, 0) / covered.length) * 10) /
+        10;
+
   // Ordered rather than nested ternaries: `ERROR` must win over `OK`, and `OK`
   // over `NONE`, so one failing repository stays visible on the row.
   const severity: Record<QualityGateStatus, number> = {
@@ -214,7 +229,7 @@ const aggregateSonar = (
     codeSmells: sum((metrics) => metrics.codeSmells),
     securityHotspots: sum((metrics) => metrics.securityHotspots),
     vulnerabilities: sum((metrics) => metrics.vulnerabilities),
-    coverage: mean((metrics) => metrics.coverage),
+    coverage,
     duplications: mean((metrics) => metrics.duplications),
     technicalDebt: formatDebt(debtMinutes),
     technicalDebtMinutes: debtMinutes,
