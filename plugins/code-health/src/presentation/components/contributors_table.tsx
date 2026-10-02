@@ -61,6 +61,7 @@ import {
 } from "./columns/wakatime_columns";
 import { ContributorRoleCell } from "./contributor_role_cell";
 import { DataTable, DEFAULT_PAGE_SIZE, PaginationControls } from "./data_table";
+import { CoverageCell } from "./coverage_cell";
 import { EmptyCell } from "./empty_cell";
 
 interface ContributorsTableProps {
@@ -629,10 +630,10 @@ const columns: ColumnDef<ContributorSummary>[] = [
     id: "coverage",
     accessorFn: (row) => row.sonarMetrics?.coverage ?? null,
     header: () => <HeaderWithHelp label="Coverage" help={SONAR_HELP} />,
-    cell: ({ getValue }) => {
-      const v = getValue<number | null>();
-      return <MetricCell value={v !== null ? formatRate(v) : null} />;
-    },
+    // Read from the row rather than the accessor: the accessor is the sort key
+    // and has to stay a number, but the cell needs to tell "no Sonar project"
+    // apart from "a Sonar project that reports no coverage".
+    cell: ({ row }) => <CoverageCell sonar={row.original.sonarMetrics} format={formatRate} />,
     enableColumnFilter: false,
   },
   {

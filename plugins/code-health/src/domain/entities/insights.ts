@@ -232,6 +232,15 @@ export interface CoverageStats {
   /** Repositories with a Sonar coverage measure. */
   readonly measured: number;
   readonly tracked: number;
+  /**
+   * Repositories SonarQube analyses but publishes no coverage measure for.
+   *
+   * Separate from `tracked - measured`, which also counts repositories Sonar
+   * never analysed. Only this number is a gap somebody can close: it is a
+   * missing coverage report, not missing tests, and until one exists the
+   * repository is scored as unmeasured rather than as zero.
+   */
+  readonly unreported: number;
   /** Unweighted mean over the measured repositories, or null with none. */
   readonly average: number | null;
   /** Median, which a handful of empty repositories cannot drag the way a mean can. */
@@ -278,6 +287,10 @@ export const coverageStats = (
   return {
     measured: values.length,
     tracked: repositories.length,
+    unreported: repositories.filter(
+      (repository) =>
+        repository.sonarMetrics !== null && repository.sonarMetrics.coverage === null,
+    ).length,
     average:
       values.length === 0 ? null : round(sum(values) / values.length),
     median: medianOf(values),
