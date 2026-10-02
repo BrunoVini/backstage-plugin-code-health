@@ -1,0 +1,4 @@
+kind: 'Fixed'
+body: '**BREAKING CHANGE:** widened `SonarMetrics.coverage` from `number` to `number | null` in `@rios0rios0/backstage-plugin-code-health-common`, so code reading it must now handle the absent case or stop compiling. SonarQube publishes no `coverage` measure for a project with no executable lines -- Terraform, configuration, a theme -- and reading that absence as 0% dragged down the coverage component of everybody who touched it. Such a project is now left out of a contributor coverage average, of the Insights median and below-target count, and of the lowest-coverage ranking, and leaves its weight out of the score rather than scoring zero. Rows already stored keep the coverage they were captured with until the next snapshot replaces them'
+breaking: true
+time: '2026-10-02T13:28:06.663635573Z'

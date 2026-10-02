@@ -198,7 +198,7 @@ export {
 export { lastCoveredDayOf } from "./time_window";
 
 export { computeRate, measuredByVersionControl } from "./contributor_summary";
-export type { ChurnUnit, ContributorSummary } from "./contributor_summary";
+export type { ChurnUnit, ContributorSummary, CoverageScope } from "./contributor_summary";
 
 export { EMPTY_BACKFILL_PROGRESS } from "./coverage";
 export type { BackfillProgress, CoverageInfo } from "./coverage";

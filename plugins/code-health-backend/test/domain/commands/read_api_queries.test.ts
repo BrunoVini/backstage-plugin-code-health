@@ -606,6 +606,10 @@ describe("ListContributorSummaries", () => {
     expect(contributor?.sonarMetrics?.coverage).toBe(85);
     // the counts still sum across both
     expect(contributor?.sonarMetrics?.codeSmells).toBe(9);
+    // and the row says how much of itself that 85 covers: the average is
+    // honest, but on its own it is silent about the repository it left out,
+    // and `coverage` is null only when *every* repository is unmeasurable.
+    expect(contributor?.coverageScope).toEqual({ measured: 1, unreported: 1 });
   });
 
   it("should report no coverage at all where no repository reports any", async () => {
@@ -634,6 +638,7 @@ describe("ListContributorSummaries", () => {
 
     // then
     expect(contributor?.sonarMetrics?.coverage).toBeNull();
+    expect(contributor?.coverageScope).toEqual({ measured: 0, unreported: 1 });
   });
 
   it("should not carry the Sonar metrics of a repository somebody only reviewed or built in", async () => {

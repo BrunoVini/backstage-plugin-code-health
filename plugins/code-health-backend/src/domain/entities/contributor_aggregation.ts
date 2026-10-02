@@ -4,6 +4,7 @@ import type {
   ConfluenceContributorMetrics,
   ContributorIdentity,
   ContributorSummary,
+  CoverageScope,
   DirectoryUser,
   JiraContributorMetrics,
   QualityGateStatus,
@@ -154,6 +155,31 @@ const applyEvent = (totals: ContributorTotals, event: CodeHealthEvent): void => 
     default:
       break;
   }
+};
+
+/**
+ * How many of the repositories behind a row's coverage reported one.
+ *
+ * Its own function rather than a second return value from `aggregateSonar`,
+ * because it answers a different question: that one folds many repositories
+ * into one set of numbers, this one describes how much of the row those
+ * numbers actually cover. A row averaging 80% over two repositories, one of
+ * which measures nothing, is not the same row as one averaging 80% over two
+ * that both do — and `coverage` alone cannot tell them apart, since it is null
+ * only when every repository is unmeasurable.
+ */
+const coverageScopeOf = (
+  repositoryIds: ReadonlySet<string>,
+  byRepository: ReadonlyMap<string, SonarMetrics>,
+): CoverageScope => {
+  const present = [...repositoryIds]
+    .map((id) => byRepository.get(id))
+    .filter((metrics): metrics is SonarMetrics => metrics !== undefined);
+
+  return {
+    measured: present.filter((metrics) => metrics.coverage !== null).length,
+    unreported: present.filter((metrics) => metrics.coverage === null).length,
+  };
 };
 
 /**
@@ -465,6 +491,7 @@ export const aggregateContributorSummaries = (
         ),
         repositories: totals.repositories.size,
         sonarMetrics: aggregateSonar(totals.codeRepositories, context.sonarByRepository),
+        coverageScope: coverageScopeOf(totals.codeRepositories, context.sonarByRepository),
         wakaTimeMetrics: mergeWakaTimeMetrics(totals.wakaTime),
         claudeMetrics: mergeClaudeMetrics(totals.claude),
         jiraMetrics: mergeJiraContributorMetrics(totals.jira),

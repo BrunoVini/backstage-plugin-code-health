@@ -48,6 +48,36 @@ describe("CoverageCell", () => {
     ).toBeInTheDocument();
   });
 
+  it("should mark an average that covers only some of the repositories touched", () => {
+    // given
+    // The case a contributor row is usually in: one repository reports
+    // coverage, another is analysed and reports none. `coverage` is null only
+    // when *every* repository is unmeasurable, so without the scope this row
+    // prints 80% and says nothing about the half it did not measure.
+    const scope = { measured: 1, unreported: 1 };
+
+    // when
+    render(<CoverageCell sonar={sonar({ coverage: 80 })} format={percent} scope={scope} />);
+
+    // then
+    expect(screen.getByText("80%")).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Averaged over 1 of 2 repositories; the rest report no coverage"),
+    ).toBeInTheDocument();
+  });
+
+  it("should leave a fully measured average unmarked", () => {
+    // given
+    const scope = { measured: 3, unreported: 0 };
+
+    // when
+    render(<CoverageCell sonar={sonar({ coverage: 80 })} format={percent} scope={scope} />);
+
+    // then
+    expect(screen.getByText("80%")).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Averaged over/)).not.toBeInTheDocument();
+  });
+
   it("should leave a repository with no Sonar project as an empty cell", () => {
     // given / when
     render(<CoverageCell sonar={null} format={percent} />);

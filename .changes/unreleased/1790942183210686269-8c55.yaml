@@ -1,4 +1,0 @@
-kind: 'Fixed'
-body: 'fixed a repository that reports no test coverage being **scored** as though it covered nothing. SonarQube publishes no `coverage` measure for a project with no executable lines -- Terraform, configuration, a theme -- and reading that absence as 0% dragged down the coverage component of everybody who touched it. Such a project is now left out of a contributor''s coverage average, of the Insights median and below-target count, and of the lowest-coverage ranking, and leaves its weight out of the score rather than scoring zero. The break is in `@rios0rios0/backstage-plugin-code-health-common`: `SonarMetrics.coverage` widens from `number` to `number | null`, so anything reading it as a number stops compiling and has to handle the absent case. Rows already stored keep the coverage they were captured with until the next snapshot replaces them'
-breaking: true
-time: '2026-10-02T11:56:23.210588736Z'

@@ -633,7 +633,13 @@ const columns: ColumnDef<ContributorSummary>[] = [
     // Read from the row rather than the accessor: the accessor is the sort key
     // and has to stay a number, but the cell needs to tell "no Sonar project"
     // apart from "a Sonar project that reports no coverage".
-    cell: ({ row }) => <CoverageCell sonar={row.original.sonarMetrics} format={formatRate} />,
+    cell: ({ row }) => (
+      <CoverageCell
+        sonar={row.original.sonarMetrics}
+        format={formatRate}
+        scope={row.original.coverageScope}
+      />
+    ),
     enableColumnFilter: false,
   },
   {
