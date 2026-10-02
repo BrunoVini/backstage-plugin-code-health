@@ -1,0 +1,3 @@
+kind: 'Fixed'
+body: 'fixed a test that asserted the length of last month and so passed or failed by the calendar rather than by the code: the reset dialog reads `new Date()` itself, and the suite expected `1 month (31 days)` against the real clock, which is wrong in any month whose predecessor has thirty'
+time: '2026-10-02T15:07:54.933890302Z'

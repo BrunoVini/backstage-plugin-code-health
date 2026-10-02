@@ -4,6 +4,42 @@ import { IngestionResetButton } from "../../../src/presentation/components/inges
 import { NO_ADMINISTRATION_ACCESS } from "../../../src/presentation/hooks/use_access";
 import { StubAdministrationService } from "../../doubles/stub_administration_service";
 
+/**
+ * A fixed September instant, the same one `reset_reach.test.ts` uses and for
+ * the same reason: the day count beside each reach is calendar arithmetic
+ * against `new Date()`, which the dialog reads itself and no test can inject.
+ * Left on the real clock this file asserts "1 month (31 days)" and passes only
+ * in a month whose predecessor has 31 days -- it was green in August and red
+ * on the second of October, for no reason connected to the code.
+ *
+ * Only `Date` is faked. The timers stay real, because React Testing Library's
+ * `findBy`/`waitFor` are driven by them and a fake one makes them hang.
+ */
+const FROZEN_NOW = new Date(2026, 8, 9, 12, 0, 0, 0);
+
+beforeAll(() => {
+  jest.useFakeTimers({
+    now: FROZEN_NOW,
+    doNotFake: [
+      "setTimeout",
+      "clearTimeout",
+      "setInterval",
+      "clearInterval",
+      "setImmediate",
+      "clearImmediate",
+      "nextTick",
+      "queueMicrotask",
+      "performance",
+      "requestAnimationFrame",
+      "cancelAnimationFrame",
+    ],
+  });
+});
+
+afterAll(() => {
+  jest.useRealTimers();
+});
+
 /** What the backend answers a configured administrator. */
 const administrator = (retentionDays = 365): GetAccessResponse => ({
   ...NO_ADMINISTRATION_ACCESS,
