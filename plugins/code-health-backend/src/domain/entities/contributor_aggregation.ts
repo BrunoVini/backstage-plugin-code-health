@@ -4,6 +4,7 @@ import type {
   ConfluenceContributorMetrics,
   ContributorIdentity,
   ContributorSummary,
+  CoverageScope,
   DirectoryUser,
   JiraContributorMetrics,
   QualityGateStatus,
@@ -157,6 +158,31 @@ const applyEvent = (totals: ContributorTotals, event: CodeHealthEvent): void => 
 };
 
 /**
+ * How many of the repositories behind a row's coverage reported one.
+ *
+ * Its own function rather than a second return value from `aggregateSonar`,
+ * because it answers a different question: that one folds many repositories
+ * into one set of numbers, this one describes how much of the row those
+ * numbers actually cover. A row averaging 80% over two repositories, one of
+ * which measures nothing, is not the same row as one averaging 80% over two
+ * that both do — and `coverage` alone cannot tell them apart, since it is null
+ * only when every repository is unmeasurable.
+ */
+const coverageScopeOf = (
+  repositoryIds: ReadonlySet<string>,
+  byRepository: ReadonlyMap<string, SonarMetrics>,
+): CoverageScope => {
+  const present = [...repositoryIds]
+    .map((id) => byRepository.get(id))
+    .filter((metrics): metrics is SonarMetrics => metrics !== undefined);
+
+  return {
+    measured: present.filter((metrics) => metrics.coverage !== null).length,
+    unreported: present.filter((metrics) => metrics.coverage === null).length,
+  };
+};
+
+/**
  * Sonar health of the repositories a contributor changed the code of in the
  * window.
  *
@@ -192,6 +218,21 @@ const aggregateSonar = (
   const mean = (pick: (metrics: SonarMetrics) => number) =>
     Math.round((sum(pick) / present.length) * 10) / 10;
 
+  // Averaged over the repositories that actually report coverage, not over
+  // every repository touched. A project with no coverage measure — Terraform,
+  // configuration, anything with no executable lines — would otherwise enter
+  // the mean as a zero and drag a row down for repositories that were never
+  // on the scale. With nothing reporting, the row says unknown rather than
+  // none.
+  const covered = present.flatMap((metrics) =>
+    metrics.coverage === null ? [] : [metrics.coverage],
+  );
+  const coverage =
+    covered.length === 0
+      ? null
+      : Math.round((covered.reduce((total, value) => total + value, 0) / covered.length) * 10) /
+        10;
+
   // Ordered rather than nested ternaries: `ERROR` must win over `OK`, and `OK`
   // over `NONE`, so one failing repository stays visible on the row.
   const severity: Record<QualityGateStatus, number> = {
@@ -214,7 +255,7 @@ const aggregateSonar = (
     codeSmells: sum((metrics) => metrics.codeSmells),
     securityHotspots: sum((metrics) => metrics.securityHotspots),
     vulnerabilities: sum((metrics) => metrics.vulnerabilities),
-    coverage: mean((metrics) => metrics.coverage),
+    coverage,
     duplications: mean((metrics) => metrics.duplications),
     technicalDebt: formatDebt(debtMinutes),
     technicalDebtMinutes: debtMinutes,
@@ -450,6 +491,7 @@ export const aggregateContributorSummaries = (
         ),
         repositories: totals.repositories.size,
         sonarMetrics: aggregateSonar(totals.codeRepositories, context.sonarByRepository),
+        coverageScope: coverageScopeOf(totals.codeRepositories, context.sonarByRepository),
         wakaTimeMetrics: mergeWakaTimeMetrics(totals.wakaTime),
         claudeMetrics: mergeClaudeMetrics(totals.claude),
         jiraMetrics: mergeJiraContributorMetrics(totals.jira),

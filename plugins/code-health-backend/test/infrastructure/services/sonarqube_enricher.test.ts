@@ -79,6 +79,32 @@ describe("SonarqubeEnricher", () => {
     });
   });
 
+  it("should read a missing coverage measure as unknown rather than as zero", async () => {
+    // given
+    // SonarQube publishes no `coverage` measure for a project with no
+    // executable lines, and reading that absence as zero invents a finding.
+    const { enricher } = createEnricher();
+    server.on("/summary", () => ({
+      body: measures({
+        bugs: "0",
+        code_smells: "7",
+        security_hotspots: "1",
+        vulnerabilities: "0",
+        duplicated_lines_density: "0.0",
+        sqale_index: "2",
+        alert_status: "OK",
+      }),
+    }));
+
+    // when
+    const result = await enricher.fetch(repository(), context());
+
+    // then
+    expect(result?.coverage).toBeNull();
+    // the counts Sonar always publishes keep reading a missing value as zero
+    expect(result?.bugs).toBe(0);
+  });
+
   it("should ask the sonarqube plugin for the entity rather than a project key", async () => {
     // given
     // That plugin resolves the project key from the entity's own annotation, so

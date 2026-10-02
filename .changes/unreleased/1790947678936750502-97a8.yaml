@@ -1,0 +1,3 @@
+kind: 'Added'
+body: 'added a distinct reading for a repository SonarQube analyses but publishes no coverage for, which until now showed the same dash as a repository with no Sonar project at all: the Repositories and Contributors tables mark it "not reported", and the Insights coverage card gains a "No coverage reported" tile, because that card leaves those repositories out of its average, median and below-target figures and nothing on the page said they existed. A contributor row also carries an optional `coverageScope`, so an average taken over only some of the repositories touched is marked rather than printed bare -- the aggregate is null only when every repository is unmeasurable, so the partial case had no other signal'
+time: '2026-10-02T13:27:58.93668347Z'

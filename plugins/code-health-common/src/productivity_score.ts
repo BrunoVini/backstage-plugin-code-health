@@ -490,6 +490,12 @@ const coverageOf = (
   if (sonar === null) {
     return unmeasuredComponent(definition, "no Sonar project measures the code touched");
   }
+  if (sonar.coverage === null) {
+    return unmeasuredComponent(
+      definition,
+      "no repository touched reports coverage",
+    );
+  }
   return measuredComponent(
     definition,
     sonar.coverage,

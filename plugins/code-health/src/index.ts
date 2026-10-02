@@ -51,6 +51,7 @@ export type {
   ContributorSummary,
   ContributorTrendPoint,
   CoverageInfo,
+  CoverageScope,
   GetAccessResponse,
   GetContributorTrendResponse,
   GetProductivityWeightsResponse,

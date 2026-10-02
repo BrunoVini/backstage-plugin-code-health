@@ -46,6 +46,21 @@ const numeric = (measures: Map<string, string>, key: string): number => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+/**
+ * The same reading, but absent stays absent.
+ *
+ * For a measure whose zero is a real value, defaulting a missing one to zero
+ * invents a finding: a project with no `coverage` measure has unknown
+ * coverage, not none. Only the measures that can legitimately be missing use
+ * this — a count Sonar always publishes keeps {@link numeric}.
+ */
+const nullableNumeric = (measures: Map<string, string>, key: string): number | null => {
+  const raw = measures.get(key);
+  if (raw === undefined || raw === "") return null;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
 const QUALITY_GATES: ReadonlyMap<string, QualityGateStatus> = new Map([
   ["OK", "OK"],
   ["ERROR", "ERROR"],
@@ -132,7 +147,7 @@ export class SonarqubeEnricher implements SonarEnricher {
       codeSmells: numeric(values, METRIC_KEYS.codeSmells),
       securityHotspots: numeric(values, METRIC_KEYS.securityHotspots),
       vulnerabilities: numeric(values, METRIC_KEYS.vulnerabilities),
-      coverage: numeric(values, METRIC_KEYS.coverage),
+      coverage: nullableNumeric(values, METRIC_KEYS.coverage),
       duplications: numeric(values, METRIC_KEYS.duplications),
       technicalDebt: formatDebt(numeric(values, METRIC_KEYS.technicalDebt)),
       technicalDebtMinutes: numeric(values, METRIC_KEYS.technicalDebt),

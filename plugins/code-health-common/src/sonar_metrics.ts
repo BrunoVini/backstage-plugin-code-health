@@ -16,7 +16,18 @@ export interface SonarMetrics {
   readonly codeSmells: number;
   readonly securityHotspots: number;
   readonly vulnerabilities: number;
-  readonly coverage: number;
+  /**
+   * Line coverage, or null where the project reports none.
+   *
+   * Nullable because "no coverage measure" and "nothing is covered" are
+   * different facts and only one of them is a finding. A project SonarQube
+   * cannot measure coverage for — Terraform, configuration, anything with no
+   * executable lines — publishes no `coverage` measure at all, and reading
+   * that absence as `0` puts a repository at the bottom of a scale it was
+   * never on. The same rule the quality gate already follows: unknown is not
+   * failing.
+   */
+  readonly coverage: number | null;
   readonly duplications: number;
   /** Formatted for display, e.g. `2d 3h`. */
   readonly technicalDebt: string;

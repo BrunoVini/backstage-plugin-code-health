@@ -571,6 +571,76 @@ describe("ListContributorSummaries", () => {
     });
   });
 
+  it("should average coverage over the repositories that report it", async () => {
+    // given
+    // SonarQube publishes no `coverage` measure for a project with no
+    // executable lines — Terraform, configuration — and folding that absence
+    // in as a zero would halve the row for a repository that was never on the
+    // scale.
+    const { store, discovered } = await seed(2);
+    const metrics = [
+      { bugs: 0, codeSmells: 2, securityHotspots: 0, vulnerabilities: 0, coverage: 85, duplications: 1, technicalDebt: "1h", technicalDebtMinutes: 60, qualityGateStatus: "OK" as const },
+      { bugs: 0, codeSmells: 7, securityHotspots: 1, vulnerabilities: 0, coverage: null, duplications: 0, technicalDebt: "2min", technicalDebtMinutes: 2, qualityGateStatus: "OK" as const },
+    ];
+    for (const [index, repository] of discovered.entries()) {
+      await store.saveSnapshot({
+        repositoryId: repository.id,
+        day: "2026-08-10",
+        capturedAt: NOW,
+        payload: aSnapshotPayload({ sonarMetrics: metrics[index] }),
+      });
+      await store.commitIngestion({
+        repositoryId: repository.id,
+        events: [commit(repository.id, "2026-08-09T10:00:00.000Z").build()],
+        chunk: { repositoryId: repository.id, kinds: ["commit"], days: [], ingestedAt: NOW },
+        status: "active",
+        now: NOW,
+      });
+    }
+
+    // when
+    const [contributor] = await new ListContributorSummaries({ store }).run(WINDOW);
+
+    // then
+    // the reporting repository alone, not (85 + 0) / 2
+    expect(contributor?.sonarMetrics?.coverage).toBe(85);
+    // the counts still sum across both
+    expect(contributor?.sonarMetrics?.codeSmells).toBe(9);
+    // and the row says how much of itself that 85 covers: the average is
+    // honest, but on its own it is silent about the repository it left out,
+    // and `coverage` is null only when *every* repository is unmeasurable.
+    expect(contributor?.coverageScope).toEqual({ measured: 1, unreported: 1 });
+  });
+
+  it("should report no coverage at all where no repository reports any", async () => {
+    // given
+    const { store, discovered } = await seed(1);
+    for (const repository of discovered) {
+      await store.saveSnapshot({
+        repositoryId: repository.id,
+        day: "2026-08-10",
+        capturedAt: NOW,
+        payload: aSnapshotPayload({
+          sonarMetrics: { bugs: 0, codeSmells: 7, securityHotspots: 1, vulnerabilities: 0, coverage: null, duplications: 0, technicalDebt: "2min", technicalDebtMinutes: 2, qualityGateStatus: "OK" as const },
+        }),
+      });
+      await store.commitIngestion({
+        repositoryId: repository.id,
+        events: [commit(repository.id, "2026-08-09T10:00:00.000Z").build()],
+        chunk: { repositoryId: repository.id, kinds: ["commit"], days: [], ingestedAt: NOW },
+        status: "active",
+        now: NOW,
+      });
+    }
+
+    // when
+    const [contributor] = await new ListContributorSummaries({ store }).run(WINDOW);
+
+    // then
+    expect(contributor?.sonarMetrics?.coverage).toBeNull();
+    expect(contributor?.coverageScope).toEqual({ measured: 0, unreported: 1 });
+  });
+
   it("should not carry the Sonar metrics of a repository somebody only reviewed or built in", async () => {
     // given
     // Sonar measures a project. Reviewing its pull requests or triggering its

@@ -58,6 +58,7 @@ import {
   VISIBILITY_FILTER_OPTIONS,
 } from "./columns/filter_options";
 import { confluenceRepositoryColumns } from "./columns/confluence_columns";
+import { CoverageCell } from "./coverage_cell";
 import { jiraRepositoryColumns } from "./columns/jira_columns";
 import { wakaTimeRepositoryColumns } from "./columns/wakatime_columns";
 import { EmptyCell } from "./empty_cell";
@@ -647,10 +648,15 @@ const buildColumns = ({
     id: "sonarCoverage",
     accessorFn: (row) => row.sonarMetrics?.coverage ?? null,
     header: "Coverage",
-    cell: ({ getValue }) => {
-      const v = getValue<number | null>();
-      return <MetricCell value={v !== null ? `${formatFixed(v)}%` : null} />;
-    },
+    // Read from the row rather than the accessor: the accessor is the sort key
+    // and has to stay a number, but the cell needs to tell "no Sonar project"
+    // apart from "a Sonar project that reports no coverage".
+    cell: ({ row }) => (
+      <CoverageCell
+        sonar={row.original.sonarMetrics}
+        format={(coverage) => `${formatFixed(coverage)}%`}
+      />
+    ),
     enableColumnFilter: false,
   },
   {

@@ -157,6 +157,43 @@ describe("InsightsPage fleet coverage card", () => {
     expect(screen.getByLabelText(/^bare: 10\.0% coverage/)).toBeInTheDocument();
   });
 
+  it("should count the analysed repositories that report no coverage", async () => {
+    // given
+    // Two repositories Sonar analyses but publishes no coverage for, beside one
+    // it measures. They are left out of the average, so without this tile the
+    // card would read 90% and say nothing about the two.
+    const dashboardService = new StubDashboardService().withRepositories([
+      RepositoryBuilder.create().withName("covered").withCoverage(90).build(),
+      RepositoryBuilder.create().withName("terraform").withCoverage(null).build(),
+      RepositoryBuilder.create().withName("helm").withCoverage(null).build(),
+    ]);
+
+    // when
+    renderPage({ dashboardService });
+
+    // then
+    await waitFor(() =>
+      expect(screen.getByText("No coverage reported")).toBeInTheDocument(),
+    );
+    expect(screen.getByText(/2 are analysed but report no coverage at all/)).toBeInTheDocument();
+  });
+
+  it("should leave the unreported count out of the subheader when there is none", async () => {
+    // given
+    const dashboardService = new StubDashboardService().withRepositories([
+      RepositoryBuilder.create().withName("covered").withCoverage(90).build(),
+    ]);
+
+    // when
+    renderPage({ dashboardService });
+
+    // then
+    await waitFor(() =>
+      expect(screen.getByText("Test coverage across the fleet")).toBeInTheDocument(),
+    );
+    expect(screen.queryByText(/report no coverage at all/)).not.toBeInTheDocument();
+  });
+
   it("should say when nothing reports a Sonar measure at all", async () => {
     // given
     const dashboardService = new StubDashboardService().withRepositories([

@@ -37,6 +37,22 @@ import type { WakaTimeMetrics } from "./wakatime_metrics";
  */
 export type ChurnUnit = "lines" | "files" | "none";
 
+/**
+ * The scope of a contributor row's coverage average: how many of the
+ * repositories behind it reported a coverage measure, and how many SonarQube
+ * analysed without reporting one.
+ *
+ * Counted over the repositories the person committed to or merged into that
+ * have a Sonar project at all. A repository with no Sonar project is in
+ * neither count, because nothing was ever going to measure it.
+ */
+export interface CoverageScope {
+  /** Repositories touched that reported a coverage measure. */
+  readonly measured: number;
+  /** Repositories touched that SonarQube analyses but reports no coverage for. */
+  readonly unreported: number;
+}
+
 export interface ContributorSummary {
   readonly key: string;
   readonly displayName: string;
@@ -125,6 +141,22 @@ export interface ContributorSummary {
    * or building in a repository does not count as changing its code.
    */
   readonly sonarMetrics: SonarMetrics | null;
+  /**
+   * How many of the repositories behind `sonarMetrics.coverage` reported one.
+   *
+   * The coverage on this row is a mean over the repositories that report a
+   * measure, because folding an unmeasurable project in as a zero would drag
+   * the row down for code that was never on the scale. That average is honest,
+   * but it is silent about its own scope: somebody who touched one measured
+   * repository and one unmeasurable one shows the first one's figure with
+   * nothing saying the second exists. `sonarMetrics.coverage` is null only
+   * when *every* repository is unmeasurable, so the partial case — the common
+   * one — has no other signal.
+   *
+   * Optional because an older backend does not send it, which is a different
+   * thing from a person having touched nothing.
+   */
+  readonly coverageScope?: CoverageScope;
   readonly wakaTimeMetrics: WakaTimeMetrics | null;
   /** Optional for compatibility with backends predating Claude collection. */
   readonly claudeMetrics?: ClaudeMetrics | null;

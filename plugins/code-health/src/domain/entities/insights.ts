@@ -232,6 +232,15 @@ export interface CoverageStats {
   /** Repositories with a Sonar coverage measure. */
   readonly measured: number;
   readonly tracked: number;
+  /**
+   * Repositories SonarQube analyses but publishes no coverage measure for.
+   *
+   * Separate from `tracked - measured`, which also counts repositories Sonar
+   * never analysed. Only this number is a gap somebody can close: it is a
+   * missing coverage report, not missing tests, and until one exists the
+   * repository is scored as unmeasured rather than as zero.
+   */
+  readonly unreported: number;
   /** Unweighted mean over the measured repositories, or null with none. */
   readonly average: number | null;
   /** Median, which a handful of empty repositories cannot drag the way a mean can. */
@@ -239,10 +248,14 @@ export interface CoverageStats {
   readonly belowTarget: number;
 }
 
+// A project that reports no coverage is left out rather than counted as zero,
+// so the median and the below-target count describe the projects coverage was
+// actually measured for.
 const coverageValues = (repositories: readonly RepositorySummary[]): number[] =>
-  repositories.flatMap((repository) =>
-    repository.sonarMetrics === null ? [] : [repository.sonarMetrics.coverage],
-  );
+  repositories.flatMap((repository) => {
+    const coverage = repository.sonarMetrics?.coverage ?? null;
+    return coverage === null ? [] : [coverage];
+  });
 
 const round = (value: number): number => Math.round(value * 10) / 10;
 
@@ -274,6 +287,10 @@ export const coverageStats = (
   return {
     measured: values.length,
     tracked: repositories.length,
+    unreported: repositories.filter(
+      (repository) =>
+        repository.sonarMetrics !== null && repository.sonarMetrics.coverage === null,
+    ).length,
     average:
       values.length === 0 ? null : round(sum(values) / values.length),
     median: medianOf(values),
@@ -321,23 +338,25 @@ export const lowestCoverageRepositories = (
   repositories: readonly RepositorySummary[],
 ): RankedItem[] =>
   repositories
-    .flatMap((repository) =>
-      repository.sonarMetrics === null
-        ? []
-        : [
-            {
-              id: repository.id,
-              label: repository.name,
-              value: repository.sonarMetrics.coverage,
-              detail:
-                repository.sonarMetrics.qualityGateStatus === "ERROR"
-                  ? "gate failing"
-                  : plural(repository.sonarMetrics.bugs, "bug"),
-              entityRef: repository.entityRef,
-              avatarUrl: null,
-            },
-          ],
-    )
+    .flatMap((repository) => {
+      const sonar = repository.sonarMetrics;
+      // A project with no coverage measure is unmeasured for the same reason a
+      // project with no Sonar project is: there is nothing to rank it by.
+      if (sonar === null || sonar.coverage === null) return [];
+      return [
+        {
+          id: repository.id,
+          label: repository.name,
+          value: sonar.coverage,
+          detail:
+            sonar.qualityGateStatus === "ERROR"
+              ? "gate failing"
+              : plural(sonar.bugs, "bug"),
+          entityRef: repository.entityRef,
+          avatarUrl: null,
+        },
+      ];
+    })
     .sort((left, right) => left.value - right.value || left.label.localeCompare(right.label))
     .slice(0, RANK_SIZE);
 

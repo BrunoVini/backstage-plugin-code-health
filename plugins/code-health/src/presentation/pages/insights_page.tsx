@@ -212,7 +212,13 @@ export const InsightsPage = ({
               title="Test coverage across the fleet"
               subheader={`From the Sonar project each catalog entity names. ${formatCount(
                 testCoverage.measured,
-              )} of ${formatCount(testCoverage.tracked)} repositories are measured.`}
+              )} of ${formatCount(testCoverage.tracked)} repositories are measured${
+                testCoverage.unreported === 0
+                  ? ""
+                  : `, and ${formatCount(
+                      testCoverage.unreported,
+                    )} are analysed but report no coverage at all`
+              }.`}
             >
               <Grid container spacing={3}>
                 <Grid item xs={12} md={4}>
@@ -238,6 +244,12 @@ export const InsightsPage = ({
                       value={formatCount(testCoverage.belowTarget)}
                       caption="repositories"
                       help={`${COVERAGE_TARGET}% is SonarQube's own default gate on new code, so this is the number a team already sees on its quality gate rather than a second target invented here.`}
+                    />
+                    <StatTile
+                      label="No coverage reported"
+                      value={formatCount(testCoverage.unreported)}
+                      caption="repositories"
+                      help="Repositories SonarQube analyses but publishes no coverage measure for, usually because no coverage report is produced or imported — the only possibility for Terraform, Helm and shell, which have no coverage engine of their own, but also what happens to a language that has one when CI never imports the report. They are left out of every figure on this card rather than counted as zero, so this is the one number that says they exist. It is a missing report, not missing tests, and it is distinct from a repository Sonar never analyses at all."
                     />
                   </Box>
                   <StatusBreakdown slices={coverageSlices} />

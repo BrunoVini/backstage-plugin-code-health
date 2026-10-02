@@ -168,6 +168,16 @@ export class ContributorBuilder {
     return this;
   }
 
+  /**
+   * The scope of the row's coverage average, which is the only thing that can
+   * distinguish a person whose repositories all report coverage from one whose
+   * average silently covers half their work.
+   */
+  withCoverageScope(measured: number, unreported: number): this {
+    this.props = { ...this.props, coverageScope: { measured, unreported } };
+    return this;
+  }
+
   withSonarMetrics(metrics: SonarMetrics): this {
     this.props = { ...this.props, sonarMetrics: metrics };
     return this;

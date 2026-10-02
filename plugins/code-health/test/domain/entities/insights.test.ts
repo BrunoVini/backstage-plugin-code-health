@@ -371,6 +371,26 @@ describe("coverageStats", () => {
     expect(stats).toMatchObject({ measured: 2, tracked: 3, average: 60 });
   });
 
+  it("should count the analysed repositories that report no coverage apart from the unanalysed", () => {
+    // given
+    // Three silences that are not the same thing: a measured repository, one
+    // Sonar analyses but publishes no coverage for, and one with no Sonar
+    // project at all.
+    const repositories = [
+      RepositoryBuilder.create().withCoverage(80).build(),
+      RepositoryBuilder.create().withCoverage(null).build(),
+      RepositoryBuilder.create().build(),
+    ];
+
+    // when
+    const stats = coverageStats(repositories);
+
+    // then
+    // `tracked - measured` is 2 and says nothing actionable; only one of those
+    // two is a missing report somebody can go and produce.
+    expect(stats).toMatchObject({ measured: 1, tracked: 3, unreported: 1, average: 80 });
+  });
+
   it("should report a median the long tail cannot drag", () => {
     // given
     const repositories = [
@@ -429,6 +449,26 @@ describe("coverageStats", () => {
     expect(stats.average).toBeNull();
     expect(stats.median).toBeNull();
   });
+
+  it("should average over the projects that report coverage, not the rest", () => {
+    // given
+    const repositories = [
+      RepositoryBuilder.create().withCoverage(90).build(),
+      RepositoryBuilder.create().withCoverage(60).build(),
+      // measured by Sonar, but with nothing to cover
+      RepositoryBuilder.create().withCoverage(null).build(),
+    ];
+
+    // when
+    const stats = coverageStats(repositories);
+
+    // then
+    // 75, not (90 + 60 + 0) / 3
+    expect(stats.average).toBe(75);
+    expect(stats.median).toBe(75);
+    // only the 60 sits under the target; a zero would have made it two
+    expect(stats.belowTarget).toBe(1);
+  });
 });
 
 describe("coverageBreakdown", () => {
@@ -486,6 +526,22 @@ describe("lowestCoverageRepositories", () => {
     // then
     // Sorting them in as zeroes would fill the chart with repositories that
     // have no Sonar project, which is a different problem with a different fix.
+    expect(ranked.map((item) => item.label)).toEqual(["measured"]);
+  });
+
+  it("should leave out a project that reports no coverage", () => {
+    // given
+    // A Sonar project with no executable lines publishes no coverage measure,
+    // which is unmeasured for the same reason no Sonar project at all is.
+    const repositories = [
+      RepositoryBuilder.create().withName("measured").withCoverage(30).build(),
+      RepositoryBuilder.create().withName("terraform").withCoverage(null).build(),
+    ];
+
+    // when
+    const ranked = lowestCoverageRepositories(repositories);
+
+    // then
     expect(ranked.map((item) => item.label)).toEqual(["measured"]);
   });
 
