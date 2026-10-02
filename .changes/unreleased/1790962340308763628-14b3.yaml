@@ -1,0 +1,3 @@
+kind: 'Added'
+body: 'named the repositories SonarQube analyses without publishing a coverage measure, in the Insights coverage card and in the contributor coverage tooltip, instead of only counting them'
+time: '2026-10-02T17:32:20.3086266Z'

@@ -39,18 +39,28 @@ export type ChurnUnit = "lines" | "files" | "none";
 
 /**
  * The scope of a contributor row's coverage average: how many of the
- * repositories behind it reported a coverage measure, and how many SonarQube
+ * repositories behind it reported a coverage measure, and which ones SonarQube
  * analysed without reporting one.
  *
  * Counted over the repositories the person committed to or merged into that
  * have a Sonar project at all. A repository with no Sonar project is in
- * neither count, because nothing was ever going to measure it.
+ * neither, because nothing was ever going to measure it.
+ *
+ * The unreported side is a list of names rather than a count because a count
+ * states that a gap exists without saying where, which is the one question a
+ * reader has next and the only form of the answer they can act on. The count
+ * is `unreportedRepositories.length`; it is not carried separately, so the two
+ * cannot disagree.
  */
 export interface CoverageScope {
   /** Repositories touched that reported a coverage measure. */
   readonly measured: number;
-  /** Repositories touched that SonarQube analyses but reports no coverage for. */
-  readonly unreported: number;
+  /**
+   * Names of the repositories touched that SonarQube analyses but reports no
+   * coverage for, sorted, so the order a reader sees does not depend on which
+   * repository happened to be ingested first.
+   */
+  readonly unreportedRepositories: readonly string[];
 }
 
 export interface ContributorSummary {

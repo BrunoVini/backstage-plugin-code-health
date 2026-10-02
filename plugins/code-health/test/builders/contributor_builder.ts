@@ -173,8 +173,8 @@ export class ContributorBuilder {
    * distinguish a person whose repositories all report coverage from one whose
    * average silently covers half their work.
    */
-  withCoverageScope(measured: number, unreported: number): this {
-    this.props = { ...this.props, coverageScope: { measured, unreported } };
+  withCoverageScope(measured: number, unreportedRepositories: readonly string[]): this {
+    this.props = { ...this.props, coverageScope: { measured, unreportedRepositories } };
     return this;
   }
 

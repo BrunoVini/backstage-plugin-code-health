@@ -5,6 +5,7 @@ import type {
 } from "@rios0rios0/backstage-plugin-code-health-common";
 import {
   SONAR_COVERAGE_TARGET,
+  compareNames,
   computeRate,
   formatCount,
   formatPercent,
@@ -233,14 +234,19 @@ export interface CoverageStats {
   readonly measured: number;
   readonly tracked: number;
   /**
-   * Repositories SonarQube analyses but publishes no coverage measure for.
+   * Repositories SonarQube analyses but publishes no coverage measure for,
+   * by name and sorted.
    *
    * Separate from `tracked - measured`, which also counts repositories Sonar
-   * never analysed. Only this number is a gap somebody can close: it is a
-   * missing coverage report, not missing tests, and until one exists the
-   * repository is scored as unmeasured rather than as zero.
+   * never analysed. Only these are a gap somebody can close: it is a missing
+   * coverage report, not missing tests, and until one exists the repository is
+   * scored as unmeasured rather than as zero.
+   *
+   * Named rather than counted. A count tells a reader a gap exists and then
+   * makes them go hunting for it, which is how these repositories stayed
+   * unmeasured without anyone noticing. The count is the array's length.
    */
-  readonly unreported: number;
+  readonly unreportedRepositories: readonly string[];
   /** Unweighted mean over the measured repositories, or null with none. */
   readonly average: number | null;
   /** Median, which a handful of empty repositories cannot drag the way a mean can. */
@@ -287,10 +293,13 @@ export const coverageStats = (
   return {
     measured: values.length,
     tracked: repositories.length,
-    unreported: repositories.filter(
-      (repository) =>
-        repository.sonarMetrics !== null && repository.sonarMetrics.coverage === null,
-    ).length,
+    unreportedRepositories: repositories
+      .filter(
+        (repository) =>
+          repository.sonarMetrics !== null && repository.sonarMetrics.coverage === null,
+      )
+      .map((repository) => repository.name)
+      .sort(compareNames),
     average:
       values.length === 0 ? null : round(sum(values) / values.length),
     median: medianOf(values),

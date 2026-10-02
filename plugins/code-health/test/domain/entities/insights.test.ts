@@ -377,9 +377,9 @@ describe("coverageStats", () => {
     // Sonar analyses but publishes no coverage for, and one with no Sonar
     // project at all.
     const repositories = [
-      RepositoryBuilder.create().withCoverage(80).build(),
-      RepositoryBuilder.create().withCoverage(null).build(),
-      RepositoryBuilder.create().build(),
+      RepositoryBuilder.create().withName("measured").withCoverage(80).build(),
+      RepositoryBuilder.create().withName("analysed-without-coverage").withCoverage(null).build(),
+      RepositoryBuilder.create().withName("no-sonar-project").build(),
     ];
 
     // when
@@ -388,7 +388,9 @@ describe("coverageStats", () => {
     // then
     // `tracked - measured` is 2 and says nothing actionable; only one of those
     // two is a missing report somebody can go and produce.
-    expect(stats).toMatchObject({ measured: 1, tracked: 3, unreported: 1, average: 80 });
+    expect(stats).toMatchObject({ measured: 1, tracked: 3, average: 80 });
+    // and it names the one, because a count sends a reader hunting for it
+    expect(stats.unreportedRepositories).toEqual(["analysed-without-coverage"]);
   });
 
   it("should report a median the long tail cannot drag", () => {

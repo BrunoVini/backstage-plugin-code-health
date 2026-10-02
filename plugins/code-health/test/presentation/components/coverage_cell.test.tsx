@@ -1,4 +1,7 @@
-import type { SonarMetrics } from "@rios0rios0/backstage-plugin-code-health-common";
+import type {
+  CoverageScope,
+  SonarMetrics,
+} from "@rios0rios0/backstage-plugin-code-health-common";
 import { render, screen } from "@testing-library/react";
 import { CoverageCell } from "../../../src/presentation/components/coverage_cell";
 
@@ -54,7 +57,7 @@ describe("CoverageCell", () => {
     // coverage, another is analysed and reports none. `coverage` is null only
     // when *every* repository is unmeasurable, so without the scope this row
     // prints 80% and says nothing about the half it did not measure.
-    const scope = { measured: 1, unreported: 1 };
+    const scope = { measured: 1, unreportedRepositories: ["customer-clusters"] };
 
     // when
     render(<CoverageCell sonar={sonar({ coverage: 80 })} format={percent} scope={scope} />);
@@ -62,13 +65,15 @@ describe("CoverageCell", () => {
     // then
     expect(screen.getByText("80%")).toBeInTheDocument();
     expect(
-      screen.getByLabelText("Averaged over 1 of 2 repositories; the rest report no coverage"),
+      screen.getByLabelText(
+        "Averaged over 1 of 2 repositories; no coverage reported for customer-clusters",
+      ),
     ).toBeInTheDocument();
   });
 
   it("should leave a fully measured average unmarked", () => {
     // given
-    const scope = { measured: 3, unreported: 0 };
+    const scope = { measured: 3, unreportedRepositories: [] };
 
     // when
     render(<CoverageCell sonar={sonar({ coverage: 80 })} format={percent} scope={scope} />);
@@ -76,6 +81,22 @@ describe("CoverageCell", () => {
     // then
     expect(screen.getByText("80%")).toBeInTheDocument();
     expect(screen.queryByLabelText(/Averaged over/)).not.toBeInTheDocument();
+  });
+
+  it("should survive a scope from a backend that predates the named list", () => {
+    // given
+    // The field replaced an `unreported` count. A browser-cached response, or
+    // a backend older than this build, carries the count and not the list, and
+    // reading `.length` off the absent field would take down the whole table.
+    const stale = { measured: 1 } as unknown as CoverageScope;
+
+    // when
+    render(<CoverageCell sonar={sonar({ coverage: 80 })} format={percent} scope={stale} />);
+
+    // then
+    // the figure still prints; only the marker it could not describe is gone
+    expect(screen.getByText("80%")).toBeInTheDocument();
+    expect(screen.queryByLabelText(/no coverage reported for/)).not.toBeInTheDocument();
   });
 
   it("should leave a repository with no Sonar project as an empty cell", () => {

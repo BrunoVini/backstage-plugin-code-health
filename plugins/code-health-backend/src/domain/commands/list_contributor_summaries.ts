@@ -13,9 +13,24 @@ import {
 import { lastDayOf, toDay } from "../entities/day";
 import { loadPersonDirectory } from "../entities/person_directory";
 import type { RepositorySnapshot } from "../entities/repository_snapshot";
-import type { CodeHealthStore } from "../repositories/code_health_store";
+import type {
+  CodeHealthStore,
+  TrackedRepositoryWithState,
+} from "../repositories/code_health_store";
 import type { CatalogReader } from "../services/catalog_reader";
 import type { DirectoryReader } from "../services/identity_resolver";
+
+/**
+ * Repository names by id, for the rows that have to say which repository a
+ * measure is missing from.
+ *
+ * Built from the tracked list rather than from the snapshots because a
+ * snapshot carries a repository id and nothing a person would recognise.
+ */
+export const repositoryNames = (
+  tracked: readonly TrackedRepositoryWithState[],
+): Map<string, string> =>
+  new Map(tracked.map(({ repository }) => [repository.id, repository.name]));
 
 /** The Sonar measures of each repository that has any, keyed by repository. */
 export const sonarByRepository = (
@@ -54,38 +69,47 @@ export class ListContributorSummaries {
     // The day before `to` when the window ends at midnight — see `lastDayOf`.
     const day = lastDayOf(input.to);
 
-    const [events, wakaTimeRows, jiraRows, confluenceRows, snapshots, people, claudeRows] =
-      await Promise.all([
-        this.options.store.listEvents({
-          from: input.from,
-          to: input.to,
-          ...(input.repositoryId === undefined
-            ? {}
-            : { repositoryIds: [input.repositoryId] }),
-        }),
-        this.options.store.listContributorMetrics<WakaTimeMetrics>({
-          source: "wakatime",
-          from: toDay(input.from),
-          to: day,
-        }),
-        // Jira is stored a day at a time, so the window can be answered honestly.
-        this.options.store.listContributorMetrics<JiraContributorMetrics>({
-          source: "jira",
-          from: toDay(input.from),
-          to: day,
-        }),
-        // Confluence is not: measuring written volume walks a page's version
-        // bodies, and doing that per day would multiply the walks by the length
-        // of the window. Its row therefore describes a trailing window, which the
-        // column headings say rather than leaving a reader to assume.
-        this.options.store.listLatestContributorMetrics<ConfluenceContributorMetrics>({
-          source: "confluence",
-          day,
-        }),
-        this.options.store.listLatestSnapshots({ day }),
-        loadPersonDirectory(this.options.store),
-        this.options.store.listContributorMetrics<ClaudeMetrics>({ source: "claude", from: toDay(input.from), to: day }),
-      ]);
+    const [
+      events,
+      wakaTimeRows,
+      jiraRows,
+      confluenceRows,
+      snapshots,
+      people,
+      claudeRows,
+      repositories,
+    ] = await Promise.all([
+      this.options.store.listEvents({
+        from: input.from,
+        to: input.to,
+        ...(input.repositoryId === undefined
+          ? {}
+          : { repositoryIds: [input.repositoryId] }),
+      }),
+      this.options.store.listContributorMetrics<WakaTimeMetrics>({
+        source: "wakatime",
+        from: toDay(input.from),
+        to: day,
+      }),
+      // Jira is stored a day at a time, so the window can be answered honestly.
+      this.options.store.listContributorMetrics<JiraContributorMetrics>({
+        source: "jira",
+        from: toDay(input.from),
+        to: day,
+      }),
+      // Confluence is not: measuring written volume walks a page's version
+      // bodies, and doing that per day would multiply the walks by the length
+      // of the window. Its row therefore describes a trailing window, which the
+      // column headings say rather than leaving a reader to assume.
+      this.options.store.listLatestContributorMetrics<ConfluenceContributorMetrics>({
+        source: "confluence",
+        day,
+      }),
+      this.options.store.listLatestSnapshots({ day }),
+      loadPersonDirectory(this.options.store),
+      this.options.store.listContributorMetrics<ClaudeMetrics>({ source: "claude", from: toDay(input.from), to: day }),
+      this.options.store.listTrackedRepositories(),
+    ]);
 
     const byPerson = accumulateContributors({
       events,
@@ -110,6 +134,7 @@ export class ListContributorSummaries {
       people,
       users,
       sonarByRepository: sonarByRepository(snapshots),
+      repositoryNames: repositoryNames(repositories),
     });
   }
 }

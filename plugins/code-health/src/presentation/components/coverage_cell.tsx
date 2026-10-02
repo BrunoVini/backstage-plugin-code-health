@@ -29,15 +29,48 @@ const useStyles = makeStyles((theme) => ({
 const UNMEASURED_HELP =
   "SonarQube analyses this repository but publishes no coverage measure for it — usually because no coverage report is produced or imported. That is the only possibility for Terraform, Helm or shell, which have no coverage engine of their own, but it also happens to a language that has one when CI never imports the report. This is not zero coverage: it is no measurement, and it is left out of the score rather than counted as a zero that would drag down everyone who touched the repository. A dash means SonarQube does not analyse the repository at all.";
 
+/**
+ * How many names the accessible label spells out before summarising the rest.
+ *
+ * The tooltip carries the whole list; this one is read aloud, and a screen
+ * reader announcing thirty repository names before the next cell is a worse
+ * answer than a short one that says how many were left out.
+ *
+ * Only the label is capped. The tooltip is the one place a contributor's own
+ * unreported repositories are named — the Insights card lists the fleet's, not
+ * theirs — so truncating it would hide names with nowhere else to read them.
+ */
+const LABELLED_NAMES = 3;
+
+const labelledNames = (repositories: readonly string[]): string =>
+  repositories.length <= LABELLED_NAMES
+    ? repositories.join(", ")
+    : `${repositories.slice(0, LABELLED_NAMES).join(", ")} and ${
+        repositories.length - LABELLED_NAMES
+      } more`;
+
+/**
+ * The unreported names on a scope that came off the wire.
+ *
+ * The type says this field is always there; a running system does not. A
+ * response cached by the browser, or served by a backend older than this
+ * build, carries the `unreported` count this field replaced and nothing else —
+ * and reading `.length` off `undefined` takes down the whole table, not just a
+ * tooltip. An empty list degrades to the behaviour from before the field
+ * existed, which is the right thing to show when nothing told us otherwise.
+ */
+const namesOf = (scope: CoverageScope): readonly string[] =>
+  scope.unreportedRepositories ?? [];
+
 const partialHelp = (scope: CoverageScope): string => {
-  const total = scope.measured + scope.unreported;
-  return `Averaged over the ${scope.measured} of ${total} repositories that report coverage. The other ${scope.unreported} ${
-    scope.unreported === 1 ? "is analysed" : "are analysed"
-  } by SonarQube but ${
-    scope.unreported === 1 ? "publishes" : "publish"
-  } no coverage measure, so ${
-    scope.unreported === 1 ? "it is" : "they are"
-  } left out of this figure rather than counted as zero. The number is honest about what it measured; this says how much of the work it covered.`;
+  const unreported = namesOf(scope);
+  const total = scope.measured + unreported.length;
+  const one = unreported.length === 1;
+  return `Averaged over the ${scope.measured} of ${total} repositories that report coverage. ${
+    one ? "This one is" : "These are"
+  } analysed by SonarQube but publish no coverage measure, so ${
+    one ? "it is" : "they are"
+  } left out of this figure rather than counted as zero: ${unreported.join(", ")}. The number is honest about what it measured; this says what it did not.`;
 };
 
 /**
@@ -84,7 +117,7 @@ export const CoverageCell = ({
   }
 
   const value = <Typography variant="body2">{format(sonar.coverage)}</Typography>;
-  if (scope === undefined || scope.unreported === 0) return value;
+  if (scope === undefined || namesOf(scope).length === 0) return value;
 
   return (
     <Tooltip title={partialHelp(scope)}>
@@ -93,8 +126,8 @@ export const CoverageCell = ({
         <ReportProblemOutlinedIcon
           className={classes.icon}
           aria-label={`Averaged over ${scope.measured} of ${
-            scope.measured + scope.unreported
-          } repositories; the rest report no coverage`}
+            scope.measured + namesOf(scope).length
+          } repositories; no coverage reported for ${labelledNames(namesOf(scope))}`}
         />
       </span>
     </Tooltip>

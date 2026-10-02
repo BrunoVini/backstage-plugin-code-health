@@ -13,6 +13,7 @@ import type {
 } from "@rios0rios0/backstage-plugin-code-health-common";
 import {
   mergeClaudeMetrics,
+  compareNames,
   computeRate,
   DEFAULT_CONTRIBUTOR_ROLE,
   formatDebt,
@@ -158,7 +159,8 @@ const applyEvent = (totals: ContributorTotals, event: CodeHealthEvent): void => 
 };
 
 /**
- * How many of the repositories behind a row's coverage reported one.
+ * How many of the repositories behind a row's coverage reported one, and which
+ * of them did not.
  *
  * Its own function rather than a second return value from `aggregateSonar`,
  * because it answers a different question: that one folds many repositories
@@ -167,18 +169,31 @@ const applyEvent = (totals: ContributorTotals, event: CodeHealthEvent): void => 
  * which measures nothing, is not the same row as one averaging 80% over two
  * that both do — and `coverage` alone cannot tell them apart, since it is null
  * only when every repository is unmeasurable.
+ *
+ * The unmeasured side is named, not counted. "One of these two repositories
+ * reports nothing" leaves the reader to work out which, and the whole reason
+ * this gap went unnoticed for so long is that nothing ever said where it was.
+ * A repository whose name is missing falls back to its id, so a row never
+ * silently drops an entry just because the repository list and the snapshots
+ * disagree.
  */
 const coverageScopeOf = (
   repositoryIds: ReadonlySet<string>,
   byRepository: ReadonlyMap<string, SonarMetrics>,
+  namesByRepository: ReadonlyMap<string, string>,
 ): CoverageScope => {
   const present = [...repositoryIds]
-    .map((id) => byRepository.get(id))
-    .filter((metrics): metrics is SonarMetrics => metrics !== undefined);
+    .map((id) => ({ id, metrics: byRepository.get(id) }))
+    .filter(
+      (entry): entry is { id: string; metrics: SonarMetrics } => entry.metrics !== undefined,
+    );
 
   return {
-    measured: present.filter((metrics) => metrics.coverage !== null).length,
-    unreported: present.filter((metrics) => metrics.coverage === null).length,
+    measured: present.filter((entry) => entry.metrics.coverage !== null).length,
+    unreportedRepositories: present
+      .filter((entry) => entry.metrics.coverage === null)
+      .map((entry) => namesByRepository.get(entry.id) ?? entry.id)
+      .sort(compareNames),
   };
 };
 
@@ -433,6 +448,12 @@ export interface ContributorSummaryContext {
   /** Catalog users for the linked keys, from a lookup bounded by who turned up. */
   readonly users: ReadonlyMap<string, DirectoryUser>;
   readonly sonarByRepository: ReadonlyMap<string, SonarMetrics>;
+  /**
+   * Repository names by id, used to name the repositories a row's coverage
+   * could not measure. Required: both callers load the repository list, and an
+   * optional map would only buy a second, untested path to the same rows.
+   */
+  readonly repositoryNames: ReadonlyMap<string, string>;
 }
 
 /** Turns the accumulated totals into the rows the contributors table shows. */
@@ -491,7 +512,11 @@ export const aggregateContributorSummaries = (
         ),
         repositories: totals.repositories.size,
         sonarMetrics: aggregateSonar(totals.codeRepositories, context.sonarByRepository),
-        coverageScope: coverageScopeOf(totals.codeRepositories, context.sonarByRepository),
+        coverageScope: coverageScopeOf(
+          totals.codeRepositories,
+          context.sonarByRepository,
+          context.repositoryNames,
+        ),
         wakaTimeMetrics: mergeWakaTimeMetrics(totals.wakaTime),
         claudeMetrics: mergeClaudeMetrics(totals.claude),
         jiraMetrics: mergeJiraContributorMetrics(totals.jira),

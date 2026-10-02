@@ -195,6 +195,8 @@ export {
   formatPercent,
 } from "./number_format";
 
+export { compareNames } from "./text_compare";
+
 export { lastCoveredDayOf } from "./time_window";
 
 export { computeRate, measuredByVersionControl } from "./contributor_summary";

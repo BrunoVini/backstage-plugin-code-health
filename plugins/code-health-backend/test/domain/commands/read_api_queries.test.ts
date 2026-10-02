@@ -609,7 +609,12 @@ describe("ListContributorSummaries", () => {
     // and the row says how much of itself that 85 covers: the average is
     // honest, but on its own it is silent about the repository it left out,
     // and `coverage` is null only when *every* repository is unmeasurable.
-    expect(contributor?.coverageScope).toEqual({ measured: 1, unreported: 1 });
+    // and it names the one it left out, so the gap is a repository somebody
+    // can go and fix rather than a number they have to go hunting behind
+    expect(contributor?.coverageScope).toEqual({
+      measured: 1,
+      unreportedRepositories: ["repo-1"],
+    });
   });
 
   it("should report no coverage at all where no repository reports any", async () => {
@@ -638,7 +643,52 @@ describe("ListContributorSummaries", () => {
 
     // then
     expect(contributor?.sonarMetrics?.coverage).toBeNull();
-    expect(contributor?.coverageScope).toEqual({ measured: 0, unreported: 1 });
+    expect(contributor?.coverageScope).toEqual({
+      measured: 0,
+      unreportedRepositories: ["repo-0"],
+    });
+  });
+
+  it("should fall back to the id of a repository that left the catalog", async () => {
+    // given
+    // A repository can stop being tracked while its snapshots are still inside
+    // the window, and then nothing holds its name any more. Dropping the entry
+    // would under-report the gap, which is the one thing this list must not do,
+    // so the id stands in for the name it cannot find.
+    const { store, discovered } = await seed(2);
+    for (const repository of discovered) {
+      await store.saveSnapshot({
+        repositoryId: repository.id,
+        day: "2026-08-10",
+        capturedAt: NOW,
+        payload: aSnapshotPayload({
+          sonarMetrics: { bugs: 0, codeSmells: 1, securityHotspots: 0, vulnerabilities: 0, coverage: null, duplications: 0, technicalDebt: "1min", technicalDebtMinutes: 1, qualityGateStatus: "OK" as const },
+        }),
+      });
+      await store.commitIngestion({
+        repositoryId: repository.id,
+        events: [commit(repository.id, "2026-08-09T10:00:00.000Z").build()],
+        chunk: { repositoryId: repository.id, kinds: ["commit"], days: [], ingestedAt: NOW },
+        status: "active",
+        now: NOW,
+      });
+    }
+    // the second repository disappears from discovery, so it is no longer tracked
+    await store.syncRepositories({
+      discovered: [discovered[0]!],
+      retentionDays: 365,
+      now: NOW,
+    });
+
+    // when
+    const [contributor] = await new ListContributorSummaries({ store }).run(WINDOW);
+
+    // then
+    // sorted, so asserting membership rather than position keeps this test
+    // about the fallback instead of about how an id happens to be spelled
+    expect(contributor?.coverageScope?.unreportedRepositories).toHaveLength(2);
+    expect(contributor?.coverageScope?.unreportedRepositories).toContain("repo-0");
+    expect(contributor?.coverageScope?.unreportedRepositories).toContain(discovered[1]!.id);
   });
 
   it("should not carry the Sonar metrics of a repository somebody only reviewed or built in", async () => {

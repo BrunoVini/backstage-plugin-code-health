@@ -36,7 +36,7 @@ import type {
   ContributorMetricRow,
 } from "../repositories/code_health_store";
 import type { DirectoryReader } from "../services/identity_resolver";
-import { sonarByRepository } from "./list_contributor_summaries";
+import { repositoryNames, sonarByRepository } from "./list_contributor_summaries";
 
 export interface ContributorTrend {
   readonly summary: ContributorSummary | null;
@@ -183,6 +183,7 @@ export class GetContributorTrend {
       people,
       weights,
       claudeRows,
+      repositories,
     ] = await Promise.all([
       this.options.store.listEvents({ from: input.from, to: input.to }),
       this.options.store.listContributorMetrics<WakaTimeMetrics>({
@@ -208,6 +209,7 @@ export class GetContributorTrend {
       loadPersonDirectory(this.options.store),
       this.options.weights?.run() ?? DEFAULT_PRODUCTIVITY_WEIGHTS,
       this.options.store.listContributorMetrics<ClaudeMetrics>({ source: "claude", from, to }),
+      this.options.store.listTrackedRepositories(),
     ]);
 
     const sonar = sonarTimeline(baseline, rangeSnapshots);
@@ -228,7 +230,7 @@ export class GetContributorTrend {
         ? new Map()
         : await this.options.directory.getUsersByRef([input.key]);
 
-    const context = { people, users };
+    const context = { people, users, repositoryNames: repositoryNames(repositories) };
     const windowRows = aggregateContributorSummaries(wholeWindow, {
       ...context,
       sonarByRepository: sonar.at(to),

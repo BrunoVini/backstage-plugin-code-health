@@ -34,6 +34,7 @@ import { DashboardToolbar } from "../components/dashboard_toolbar";
 import { ConfluenceFleetInsights } from "../components/insights/confluence_insights";
 import { ClaudeUsageInsights } from "../components/insights/claude_insights";
 import { JiraFleetInsights } from "../components/insights/jira_insights";
+import { UnreportedRepositories } from "../components/insights/unreported_repositories";
 import { WakaTimeFleetInsights } from "../components/insights/wakatime_insights";
 import { useAutoRefresh } from "../hooks/use_auto_refresh";
 import type { UseCoverageResult } from "../hooks/use_coverage";
@@ -213,10 +214,10 @@ export const InsightsPage = ({
               subheader={`From the Sonar project each catalog entity names. ${formatCount(
                 testCoverage.measured,
               )} of ${formatCount(testCoverage.tracked)} repositories are measured${
-                testCoverage.unreported === 0
+                testCoverage.unreportedRepositories.length === 0
                   ? ""
                   : `, and ${formatCount(
-                      testCoverage.unreported,
+                      testCoverage.unreportedRepositories.length,
                     )} are analysed but report no coverage at all`
               }.`}
             >
@@ -247,12 +248,15 @@ export const InsightsPage = ({
                     />
                     <StatTile
                       label="No coverage reported"
-                      value={formatCount(testCoverage.unreported)}
+                      value={formatCount(testCoverage.unreportedRepositories.length)}
                       caption="repositories"
                       help="Repositories SonarQube analyses but publishes no coverage measure for, usually because no coverage report is produced or imported — the only possibility for Terraform, Helm and shell, which have no coverage engine of their own, but also what happens to a language that has one when CI never imports the report. They are left out of every figure on this card rather than counted as zero, so this is the one number that says they exist. It is a missing report, not missing tests, and it is distinct from a repository Sonar never analyses at all."
                     />
                   </Box>
                   <StatusBreakdown slices={coverageSlices} />
+                  <UnreportedRepositories
+                    repositories={testCoverage.unreportedRepositories}
+                  />
                 </Grid>
 
                 <Grid item xs={12} md={8}>
