@@ -510,6 +510,7 @@ describe("AzureDevOpsCollector", () => {
 
       // then
       expect(result.events.find((event) => event.kind === "commit")?.changedFiles).toBe(1);
+      expect(server.requestsFor("/pullrequests/42/commits")).toHaveLength(1);
       expect(server.requests.filter((request) => request.path.endsWith("/commitsbatch"))).toEqual([]);
     });
 
@@ -560,21 +561,31 @@ describe("AzureDevOpsCollector", () => {
       expect(server.requests.filter((request) => request.path.includes("/pullrequests/42/commits"))).toEqual([]);
     });
 
-    it("should drop the merge commit of a rebase-and-merge without re-fetching its commits", async () => {
+    it("should ask a rebase-and-merge for the commits its dropped merge commit landed", async () => {
       // given
-      // The rewritten commits are already on the branch under their authors;
-      // asking the pull request for its commits would return the originals
-      // under different identifiers and count the work twice.
+      // A branch rebased onto the target before it was completed leaves Azure
+      // DevOps nothing to rewrite, so the commits land with the dates they were
+      // written on and the branch history for the day of the merge misses them
+      // exactly as it misses a plain merge's. Dropping the merge commit without
+      // asking for them would throw the whole change away.
+      server.onPath("/pullrequests/42/commits", () => ({
+        body: {
+          value: [
+            {
+              commitId: "work-1",
+              comment: "added the thing",
+              author: { name: "Author", email: "author@example.com", date: "2026-08-06T10:00:00Z" },
+              changeCounts: { Edit: 7 },
+            },
+          ],
+        },
+      }));
       withClosed(completed({ completionOptions: { mergeStrategy: "rebaseMerge" } }), [
         {
           commitId: "landed",
           comment: "Merged PR 42: add the thing",
           author: { email: "merger@example.com", date: "2026-08-09T15:00:01Z" },
-        },
-        {
-          commitId: "rewritten",
-          comment: "added the thing",
-          author: { email: "author@example.com", date: "2026-08-09T15:00:00Z" },
+          changeCounts: { Edit: 7 },
         },
       ]);
 
@@ -582,8 +593,15 @@ describe("AzureDevOpsCollector", () => {
       const result = await collect();
 
       // then
-      expect(result.events.filter((event) => event.kind === "commit").map((event) => event.externalId)).toEqual(["rewritten"]);
-      expect(server.requests.filter((request) => request.path.includes("/pullrequests/42/commits"))).toEqual([]);
+      const commits = result.events.filter((event) => event.kind === "commit");
+      expect(commits.map((event) => event.externalId)).toEqual(["work-1"]);
+      expect(commits[0]).toMatchObject({
+        actorKey: "author@example.com",
+        actorName: "Author",
+        occurredAt: new Date("2026-08-06T10:00:00Z"),
+        changedFiles: 7,
+      });
+      expect(server.requestsFor("/pullrequests/42/commits")).toHaveLength(1);
     });
 
     it("should keep the stamp on a completion strategy it does not know", async () => {

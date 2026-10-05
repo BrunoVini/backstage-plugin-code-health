@@ -93,9 +93,9 @@ const PULL_REQUEST_OUTCOMES: ReadonlyMap<string, EventOutcome> = new Map([
  * attribution works in.
  *
  * `rebase` rewrites the pull request's commits onto the target with their
- * authors intact; `rebaseMerge` does the same and then adds a merge commit on
- * top. Neither leaves anything to re-attribute, but the merge commit of the
- * second carries no work and is dropped like any other.
+ * authors intact and leaves nothing to re-attribute; `rebaseMerge` adds a merge
+ * commit on top of them, which is dropped like any other merge commit, so what
+ * it landed is read back off the pull request instead, see `completionOf`.
  */
 const MERGE_STRATEGIES: ReadonlyMap<string, MergeStrategy> = new Map([
   ["squash", "squash"],
@@ -124,11 +124,19 @@ const identityName = (identity: AdoIdentityNode | undefined): string | null =>
  * How a completed pull request landed, and whether its own commits have to be
  * fetched to be seen at all.
  *
- * Only a plain merge hides them: the commits keep the dates they were written
- * on, so the branch history for the day of the merge never returns them, and
- * the day they were written was fetched before they were on the branch. A
- * squash puts one new commit on the branch, a rebase puts rewritten ones there,
- * and both are dated at the merge.
+ * Every completion whose merge commit is dropped hides them, which is both the
+ * plain merge and the rebase-and-merge. The plain merge hides them because the
+ * commits keep the dates they were written on, so the branch history for the
+ * day of the merge never returns them, and the day they were written was
+ * fetched before they were on the branch. The rebase-and-merge hides them for
+ * the same reason once the branch was rebased onto the target before it was
+ * completed, which is what a policy that demands an up-to-date branch makes
+ * everyone do: Azure DevOps then has nothing left to rewrite and replays the
+ * commits with the dates they already had. That is why this follows the
+ * strategy attribution ends up with rather than the name the provider used —
+ * whatever is dropped as a merge commit has to be asked for, or the work it
+ * carried is lost. A squash puts one new commit on the branch and a rebase puts
+ * rewritten ones there, both dated at the completion, so neither needs asking.
  *
  * With no completion options at all the completion was a plain merge, which is
  * what Azure DevOps does when nothing says otherwise; `squashMerge` is the
@@ -141,10 +149,8 @@ const completionOf = (
   const options = node.completionOptions;
   const raw =
     options?.mergeStrategy ?? (options?.squashMerge === true ? "squash" : "noFastForward");
-  return {
-    strategy: MERGE_STRATEGIES.get(raw) ?? "linear",
-    fetchesCommits: raw === "noFastForward",
-  };
+  const strategy = MERGE_STRATEGIES.get(raw) ?? "linear";
+  return { strategy, fetchesCommits: strategy === "merge_commit" };
 };
 
 /**
@@ -170,7 +176,7 @@ const chunked = <T>(items: readonly T[], size: number): T[][] =>
 interface CollectedPullRequests {
   readonly events: CodeHealthEvent[];
   readonly merged: MergedPullRequest[];
-  /** Completed with a plain merge, so their commits have to be asked for. */
+  /** Completed with a merge commit, so their commits have to be asked for. */
   readonly needingCommits: number[];
 }
 
@@ -186,8 +192,8 @@ export interface AzureDevOpsCollectorOptions {
  * Every endpoint used here accepts a date range, so one window costs a fixed
  * number of requests regardless of how much history exists — four plus
  * pagination, against the five *per repository per dashboard load* the browser
- * used to issue — plus one or two per pull request completed with a plain
- * merge, whose commits the branch history never returns. The organisation-wide
+ * used to issue — plus one or two per pull request completed with a merge
+ * commit, whose commits the branch history never returns. The organisation-wide
  * project and repository enumeration is gone entirely: the catalog already
  * knows which repositories exist.
  *
@@ -702,7 +708,7 @@ export class AzureDevOpsCollector implements VcsCollector {
   }
 
   /**
-   * The commits the pull requests completed with a plain merge brought in.
+   * The commits the pull requests completed with a merge commit brought in.
    *
    * They keep the dates they were written on, so they are stored where they
    * happened. The pull request's commit list carries no change counts, which
