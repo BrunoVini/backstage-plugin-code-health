@@ -1,0 +1,3 @@
+kind: 'Security'
+body: 'suppressed GHSA-vfj7-8cjw-p6xm (braces) in the dependency audit, because no patched release exists to raise it to: 3.0.3 is both the latest published version and the vulnerable one. braces reaches this repository only through `chokidar@3.6.0`, which six Backstage and rspack packages pin to `^3.x`, and `chokidar@4` dropped the glob support all six rely on -- so there is no version bump available, only a breaking replacement. The suppression names that one advisory and nothing else, and comes out the day braces publishes a fix'
+time: '2026-10-05T17:04:48.892927352Z'
