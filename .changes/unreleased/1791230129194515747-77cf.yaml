@@ -1,0 +1,3 @@
+kind: 'Security'
+body: 'raised http-cache-semantics to 4.3.0, closing GHSA-ch52-4w7c-c8xp (advisory 1240991), under which a max-stale request could be served the cached response of another user. With the braces suppression recorded alongside it, the high-severity dependency audit passes again. 4.3.0 was published six days short of the seven-day minimum release age this repository requires, so it is accompanied by a temporary, single-package waiver of that age gate -- granted only after checking the release by hand (same sole publisher, zero dependencies, no install scripts, signed, a 471-byte diff). That waiver is temporary and must be deleted on 2026-10-11, when 4.3.0 clears the gate on its own; the version pin stays'
+time: '2026-10-05T19:55:29.194379847Z'
