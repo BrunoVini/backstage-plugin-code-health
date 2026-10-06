@@ -41,6 +41,7 @@ export type {
   BadgeCheck,
   BadgeColor,
   BadgeStatus,
+  ChurnScope,
   CIState,
   ComplianceColor,
   ComplianceStatus,

@@ -1,5 +1,6 @@
 import type {
   ClaudeMetrics,
+  ChurnScope,
   ChurnUnit,
   ConfluenceContributorMetrics,
   ContributorIdentity,
@@ -37,12 +38,17 @@ export interface ContributorTotals {
   linesDeleted: number;
   changedFiles: number;
   /**
-   * Whether the provider *reported* the field at all, which is not the same
-   * question as whether the number came back above zero. A quiet week is a real
-   * measurement of zero; a provider that has no line counts is not.
+   * How many commits the provider *reported* each field on, which is not the
+   * same question as whether the numbers came back above zero. A quiet week is
+   * a real measurement of zero; a provider that has no line counts is not.
+   *
+   * Counts rather than flags, because one commit carrying a figure and eleven
+   * carrying none is not the same window as twelve that all carried one, and
+   * the churn total — a sum in which an unreported commit is indistinguishable
+   * from a commit that changed nothing — cannot tell them apart on its own.
    */
-  sawLines: boolean;
-  sawFiles: boolean;
+  commitsWithLines: number;
+  commitsWithFiles: number;
   pullRequestsOpened: number;
   pullRequestsMerged: number;
   reviewsGiven: number;
@@ -73,8 +79,8 @@ export interface ContributorTotals {
  * everything to the coarser one.
  */
 const churnUnitOf = (totals: ContributorTotals): ChurnUnit => {
-  if (totals.sawLines) return "lines";
-  return totals.sawFiles ? "files" : "none";
+  if (totals.commitsWithLines > 0) return "lines";
+  return totals.commitsWithFiles > 0 ? "files" : "none";
 };
 
 const empty = (): ContributorTotals => ({
@@ -86,8 +92,8 @@ const empty = (): ContributorTotals => ({
   linesAdded: 0,
   linesDeleted: 0,
   changedFiles: 0,
-  sawLines: false,
-  sawFiles: false,
+  commitsWithLines: 0,
+  commitsWithFiles: 0,
   pullRequestsOpened: 0,
   pullRequestsMerged: 0,
   reviewsGiven: 0,
@@ -129,9 +135,9 @@ const applyEvent = (totals: ContributorTotals, event: CodeHealthEvent): void => 
       totals.linesDeleted += event.deletions ?? 0;
       totals.changedFiles += event.changedFiles ?? 0;
       if (event.additions !== null || event.deletions !== null) {
-        totals.sawLines = true;
+        totals.commitsWithLines += 1;
       }
-      if (event.changedFiles !== null) totals.sawFiles = true;
+      if (event.changedFiles !== null) totals.commitsWithFiles += 1;
       break;
     case "pull_request":
       if (event.outcome === "open") totals.pullRequestsOpened += 1;
@@ -155,6 +161,29 @@ const applyEvent = (totals: ContributorTotals, event: CodeHealthEvent): void => 
     default:
       break;
   }
+};
+
+/**
+ * How much of a row's window its churn figure actually covers.
+ *
+ * Counted in the unit the row ended up in, not in whatever each commit
+ * happened to carry. A row spanning both providers is measured in `lines`, so
+ * the Azure DevOps commits on it — which reported files and no lines — are
+ * unmeasured *against the number this row prints*, however much Azure DevOps
+ * did say about them. Counting them as measured would claim a coverage the
+ * figure does not have.
+ *
+ * With no unit at all the measured count is zero and every commit is
+ * unmeasured, which is the case the score needs: a window with commits and no
+ * surviving churn figure is a loss, not an absence of anything to measure.
+ */
+const churnScopeOf = (totals: ContributorTotals, unit: ChurnUnit): ChurnScope => {
+  const measuredIn: Record<ChurnUnit, number> = {
+    lines: totals.commitsWithLines,
+    files: totals.commitsWithFiles,
+    none: 0,
+  };
+  return { measured: measuredIn[unit], unmeasured: totals.commits - measuredIn[unit] };
 };
 
 /**
@@ -448,6 +477,9 @@ export const aggregateContributorSummaries = (
         profileUrl: totals.profileUrl,
       });
       const user = context.users.get(key);
+      // Once, because the scope is counted in whichever unit the unit rule
+      // picked — asking twice risks the two answers disagreeing.
+      const churnUnit = churnUnitOf(totals);
 
       return {
         key,
@@ -471,7 +503,8 @@ export const aggregateContributorSummaries = (
         // legitimate contribution, not a negative one.
         linesOfCode: Math.max(0, totals.linesAdded - totals.linesDeleted),
         changedFiles: totals.changedFiles,
-        churnUnit: churnUnitOf(totals),
+        churnUnit,
+        churnScope: churnScopeOf(totals, churnUnit),
         pullRequestsOpened: totals.pullRequestsOpened,
         pullRequestsMerged: totals.pullRequestsMerged,
         reviewsGiven: totals.reviewsGiven,

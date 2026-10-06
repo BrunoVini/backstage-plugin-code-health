@@ -508,15 +508,122 @@ describe("computeProductivityScore", () => {
     });
   });
 
-  it("should leave churn unmeasured when the provider reported none", () => {
+  it("should never score a contributor higher for losing more churn data", () => {
     // given
-    const contributor = aContributor({ churnUnit: "none" });
+    // The regression this guards: one contributor lost every commit of four
+    // merged pull requests and paid nothing, because the dropped component
+    // handed its weight to the ones that were measured; another kept 1 of 18
+    // commits and 4 of 31 changed files and was fully penalised on that
+    // fraction. Losing everything has to be the worst case, never the best.
+    const lostEverything = aContributor({
+      commits: 11,
+      linesOfCode: 0,
+      changedFiles: 0,
+      churnUnit: "none",
+      churnScope: { measured: 0, unmeasured: 11 },
+    });
+    const keptOneCommit = aContributor({
+      commits: 11,
+      linesOfCode: 0,
+      changedFiles: 4,
+      churnUnit: "files",
+      churnScope: { measured: 1, unmeasured: 10 },
+    });
+    const reference = {
+      ...EMPTY_FLEET_REFERENCE,
+      commits: 11,
+      changedFiles: 30,
+      linesOfCode: 400,
+    };
 
     // when
-    const score = computeProductivityScore(contributor, fleetReferenceOf([contributor], 1));
+    const lostScore = computeProductivityScore(lostEverything, reference);
+    const keptScore = computeProductivityScore(keptOneCommit, reference);
 
     // then
-    expect(componentById(score, "churn")?.normalized).toBeNull();
+    // A window with commits and no surviving figure is a measured zero, not an
+    // absent measurement — otherwise the comparison below inverts.
+    expect(componentById(lostScore, "churn")).toMatchObject({
+      value: 0,
+      normalized: 0,
+      detail: "no churn figure survived for any of the 11 commits in this window",
+    });
+    expect(componentById(keptScore, "churn")?.normalized).toBeGreaterThanOrEqual(
+      componentById(lostScore, "churn")?.normalized ?? 0,
+    );
+    expect(keptScore.value ?? 0).toBeGreaterThanOrEqual(lostScore.value ?? 0);
+  });
+
+  it("should disclose how much of the window the churn figure covers", () => {
+    // given
+    const contributor = aContributor({
+      commits: 18,
+      linesOfCode: 0,
+      changedFiles: 15,
+      churnUnit: "files",
+      churnScope: { measured: 1, unmeasured: 17 },
+    });
+    const reference = { ...EMPTY_FLEET_REFERENCE, commits: 18, changedFiles: 30 };
+
+    // when
+    const score = computeProductivityScore(contributor, reference);
+
+    // then
+    // The figure is never scaled up to the full commit count — the scope is
+    // said instead, so a conservative number cannot be mistaken for a whole
+    // window.
+    expect(componentById(score, "churn")).toMatchObject({
+      value: 15,
+      normalized: 0.25,
+      detail:
+        "15 changed files a day against the team's average of 30 changed files a day, over the 1 of 18 commits that carried a figure",
+    });
+  });
+
+  it("should leave churn unmeasured when nothing was lost", () => {
+    // given
+    // A row an older backend sent carries no scope at all, and a window with
+    // no commit lost nothing — neither is a measurement of zero churn.
+    const olderBackend = aContributor({ churnUnit: "none", linesOfCode: 0 });
+    const noCommits = aContributor({
+      commits: 0,
+      linesOfCode: 0,
+      churnUnit: "none",
+      churnScope: { measured: 0, unmeasured: 0 },
+    });
+    const reference = { ...EMPTY_FLEET_REFERENCE, changedFiles: 30 };
+
+    // when / then
+    for (const contributor of [olderBackend, noCommits]) {
+      expect(
+        componentById(computeProductivityScore(contributor, reference), "churn"),
+      ).toMatchObject({
+        normalized: null,
+        detail: "the provider reported no churn figure",
+      });
+    }
+  });
+
+  it("should leave churn unmeasured when nobody in the fleet recorded any", () => {
+    // given
+    // Nothing was ever going to be measured here, so the window says nothing
+    // about this person — the same rule every other relative component
+    // follows when the fleet rate is zero.
+    const contributor = aContributor({
+      commits: 11,
+      linesOfCode: 0,
+      churnUnit: "none",
+      churnScope: { measured: 0, unmeasured: 11 },
+    });
+
+    // when
+    const score = computeProductivityScore(contributor, EMPTY_FLEET_REFERENCE);
+
+    // then
+    expect(componentById(score, "churn")).toMatchObject({
+      normalized: null,
+      detail: "the provider reported no churn figure",
+    });
   });
 
   it("should read the pipeline over decided runs and leave it unmeasured with none", () => {

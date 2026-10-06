@@ -403,6 +403,7 @@ const relative = (
   fleetRate: number,
   days: number,
   noun: string,
+  caveat?: string,
 ): ScoreComponent => {
   if (fleetRate <= 0) {
     return unmeasuredComponent(definition, `nobody recorded any ${noun}s in this window`);
@@ -417,15 +418,81 @@ const relative = (
     definition,
     value,
     shareOf(value / days, fleetRate * FLEET_RATE_CEILING),
-    `${said.value} against the team's average of ${said.reference}`,
+    `${said.value} against the team's average of ${said.reference}${caveat ?? ""}`,
   );
 };
 
+/**
+ * Churn, read against the fleet and against how much of the window survived.
+ *
+ * Churn is the one component whose figure can go missing a commit at a time.
+ * The total is a sum over every commit in the window, and a commit no provider
+ * reported a figure for lands in that sum as a zero, indistinguishable from a
+ * commit that changed nothing. `churnUnit` says only that *something* was
+ * measured — one commit in eleven carrying a file count is enough to make the
+ * whole row read `files` — so the row's own figure cannot say how much of the
+ * window it covers. {@link ContributorSummary.churnScope} can, and three
+ * decisions follow from it.
+ *
+ * **A window with commits but no surviving churn figure is scored zero, not
+ * dropped.** Dropping it handed the component's weight to the components that
+ * *were* measured, which is right for a quality gate nobody ran and exactly
+ * wrong here: a contributor whose churn data vanished entirely was scored on
+ * their other components alone, while a colleague who kept one commit in
+ * eleven was scored on a fraction of their real work. Total loss came out
+ * strictly better than partial loss, and the incentive inverted — the worse
+ * the data, the better the score. The honest reading is that the unmeasured
+ * commits are already in the total, as the zeros they are; keeping the weight
+ * makes losing everything the worst case rather than a free pass.
+ *
+ * **Unless nothing in the fleet measures churn at all.** When no row in the
+ * window reports any line or file count, nothing was ever going to be
+ * measured, and the component is unmeasurable rather than zero — the same rule
+ * {@link relative} already applies to a fleet rate of zero, for the same
+ * reason. Only a row that measured nothing *on a team where churn is measured*
+ * is a loss. A row an older backend sent carries no scope at all, and is the
+ * same case: nothing claims anything went missing.
+ *
+ * **The measured figure is never scaled up to the full commit count.**
+ * Extrapolating assumes the commits that went missing look like the ones that
+ * survived, and they need not: one surviving above-average commit multiplied
+ * by eighteen scores *higher* than the complete truth would have, which would
+ * let somebody gain from losing data — the precise failure this exists to
+ * prevent. There is no estimator that both corrects the bias and guarantees no
+ * gain, so the correction is refused. The figure stays conservative, and the
+ * sentence discloses the scope instead, so a reader can see how much of the
+ * window it covers and go and fix the collection rather than argue with the
+ * number.
+ */
 const churnOf = (
   definition: ScoreComponentDefinition,
   summary: ContributorSummary,
   reference: FleetReference,
 ): ScoreComponent => {
+  const scope = summary.churnScope;
+
+  if (summary.churnUnit === "none") {
+    const lost = scope?.unmeasured ?? 0;
+    const fleetMeasuresChurn = reference.linesOfCode > 0 || reference.changedFiles > 0;
+    if (lost === 0 || !fleetMeasuresChurn) {
+      return unmeasuredComponent(definition, "the provider reported no churn figure");
+    }
+    return measuredComponent(
+      definition,
+      0,
+      0,
+      `no churn figure survived for any of the ${plural(lost, "commit")} in this window`,
+    );
+  }
+
+  const caveat =
+    scope !== undefined && scope.unmeasured > 0
+      ? `, over the ${formatCount(scope.measured)} of ${plural(
+          scope.measured + scope.unmeasured,
+          "commit",
+        )} that carried a figure`
+      : undefined;
+
   if (summary.churnUnit === "lines") {
     return relative(
       definition,
@@ -433,18 +500,17 @@ const churnOf = (
       reference.linesOfCode,
       reference.days,
       "net line",
+      caveat,
     );
   }
-  if (summary.churnUnit === "files") {
-    return relative(
-      definition,
-      summary.changedFiles,
-      reference.changedFiles,
-      reference.days,
-      "changed file",
-    );
-  }
-  return unmeasuredComponent(definition, "the provider reported no churn figure");
+  return relative(
+    definition,
+    summary.changedFiles,
+    reference.changedFiles,
+    reference.days,
+    "changed file",
+    caveat,
+  );
 };
 
 const pipelineOf = (

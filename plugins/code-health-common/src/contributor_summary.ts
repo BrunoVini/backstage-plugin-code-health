@@ -53,6 +53,29 @@ export interface CoverageScope {
   readonly unreported: number;
 }
 
+/**
+ * The scope of a contributor row's churn total: how many of the commits behind
+ * it carried a figure in the unit the row is measured in, and how many carried
+ * none.
+ *
+ * Counted in the row's own {@link ChurnUnit}, because that is the unit the
+ * figure is read and scored in. A row spanning both providers is measured in
+ * `lines`, and the Azure DevOps commits on it reported only files — they are
+ * genuinely unmeasured against the number the row prints, however much the
+ * provider did report about them.
+ *
+ * The total alone cannot say this. A commit the provider said nothing about
+ * contributes a zero to the sum exactly like a commit that changed nothing, so
+ * a window in which one commit of eighteen survived prints a small, confident
+ * figure with nothing to mark it as a fraction of the real work.
+ */
+export interface ChurnScope {
+  /** Commits that carried a figure in this row's churn unit. */
+  readonly measured: number;
+  /** Commits that carried none. */
+  readonly unmeasured: number;
+}
+
 export interface ContributorSummary {
   readonly key: string;
   readonly displayName: string;
@@ -99,6 +122,26 @@ export interface ContributorSummary {
    * counts, `none` when it reported neither.
    */
   readonly churnUnit: ChurnUnit;
+  /**
+   * How many of this row's commits actually carried a figure in
+   * {@link churnUnit}, and how many did not.
+   *
+   * The churn total is a sum over every commit in the window, and a commit the
+   * provider reported nothing for enters it as a zero — indistinguishable from
+   * a commit that genuinely changed nothing. So the total is silent about its
+   * own scope in exactly the way an average is: somebody whose window kept one
+   * commit out of eighteen shows a figure that looks like the whole window.
+   * `churnUnit` alone cannot tell the two apart, because it says `files` as
+   * soon as *one* commit carried a file count.
+   *
+   * That silence is what the productivity score reads, which is why this is
+   * carried rather than left to a view: a window that measured none of its
+   * commits must not score as a window that was never going to be measured.
+   *
+   * Optional because an older backend does not send it, which is a different
+   * thing from a window in which nothing was lost.
+   */
+  readonly churnScope?: ChurnScope;
   readonly pullRequestsOpened: number;
   readonly pullRequestsMerged: number;
   /**

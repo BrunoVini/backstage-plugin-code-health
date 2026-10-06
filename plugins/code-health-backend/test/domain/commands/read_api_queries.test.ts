@@ -1742,6 +1742,42 @@ describe("ListContributorSummaries churn unit", () => {
     expect(contributor.churnUnit).toBe("none");
   });
 
+  it("should count how many commits carried a figure and how many did not", async () => {
+    // given
+    const { store, discovered } = await seed();
+    const [repository] = discovered;
+    await store.commitIngestion({
+      repositoryId: repository.id,
+      events: [
+        EventBuilder.commit()
+          .withRepository(repository.id)
+          .withActor("dev@example.com")
+          .at("2026-08-10T10:00:00.000Z")
+          .withFileChurn(7)
+          .build(),
+        EventBuilder.commit()
+          .withRepository(repository.id)
+          .withActor("dev@example.com")
+          .at("2026-08-10T11:00:00.000Z")
+          .build(),
+      ],
+      chunk: { repositoryId: repository.id, kinds: ["commit"], days: [], ingestedAt: NOW },
+      status: "active",
+      now: NOW,
+    });
+
+    // when
+    const [contributor] = await new ListContributorSummaries({ store }).run(WINDOW);
+
+    // then
+    // The second commit enters `changedFiles` as a zero, indistinguishable
+    // from a commit that changed nothing, so the unit alone cannot say the
+    // figure covers half the window. The scope can.
+    expect(contributor.churnUnit).toBe("files");
+    expect(contributor.changedFiles).toBe(7);
+    expect(contributor.churnScope).toEqual({ measured: 1, unmeasured: 1 });
+  });
+
   it("should prefer lines when a fleet spans both providers", async () => {
     // given
     const { store, discovered } = await seed(2);

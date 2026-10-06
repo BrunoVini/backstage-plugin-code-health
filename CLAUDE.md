@@ -215,7 +215,14 @@ The wire contract, and the pure functions both sides have to agree on.
   contributors table showed `0 / +0 / -0` for an entire Azure DevOps fleet, which reads as "nobody
   wrote any code" rather than as "the provider never said". The unit is decided by whether the
   provider *reported* the field, never by whether the value came back above zero: a quiet week is a
-  real measurement of zero.
+  real measurement of zero. The unit alone says only that *something* was measured, so the row also
+  carries `churnScope` — how many of its commits actually carried a figure in that unit — because an
+  unreported commit enters the total as a zero and is indistinguishable from one that changed
+  nothing. A window with commits and no surviving figure is therefore scored zero rather than having
+  its weight redistributed over the components that were measured, which had made total data loss
+  score better than partial loss; and the measured figure is never scaled up to the full commit
+  count, since extrapolating from the commits that survived can score above the truth and let
+  somebody gain from losing data.
 - **Insights is the landing tab.** It is the only tab that answers a question about the fleet rather
   than about one row of it, so it is what someone opening the plugin cold wants first; the two
   tables are the drill-down. Moving it to `/` cost the `insights` sub route, which is the breaking
