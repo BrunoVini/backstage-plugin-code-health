@@ -1,0 +1,3 @@
+kind: 'Security'
+body: 'cleared the high-severity dependency audit: proxy-addr was raised to 2.0.8, closing a critical IP-spoofing advisory, and compression to 1.8.2. The three findings that remain are each recorded with the reason no version fixes them today -- braces has no patched release at all, source-map-js has one published too recently for this repository seven-day minimum release age and clears on 2026-10-07, and http-cache-semantics has one whose pin changes the dependency-tree hash of every natively built package and so rebuilds better-sqlite3, cpu-features, keytar and ssh2 past the CI job timeout'
+time: '2026-10-06T12:01:54.07143468Z'
