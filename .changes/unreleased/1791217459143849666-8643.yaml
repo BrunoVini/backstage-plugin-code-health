@@ -1,0 +1,3 @@
+kind: 'Fixed'
+body: 'fixed the work lost from every Azure DevOps pull request completed with rebase-and-merge: the merge commit that carried the whole change was dropped as a merge commit while the commits under it were never asked for, so a contributor who completed that way was credited with a fraction of what they wrote -- one day measured kept 1 commit and 4 changed files out of 18 commits and 31 files -- which understated code churn and, through it, the productivity score. The pull request''s own commits are now collected exactly as they already were for a plain merge'
+time: '2026-10-05T16:24:19.143771227Z'
