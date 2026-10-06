@@ -1778,6 +1778,47 @@ describe("ListContributorSummaries churn unit", () => {
     expect(contributor.churnScope).toEqual({ measured: 1, unmeasured: 1 });
   });
 
+  it("should count a file-only commit as unmeasured on a row printing lines", async () => {
+    // given
+    const { store, discovered } = await seed(2);
+    const [first, second] = discovered;
+    for (const [repository, event] of [
+      [first, commit(first.id, "2026-08-10T10:00:00.000Z").build()],
+      [
+        second,
+        EventBuilder.commit()
+          .withRepository(second.id)
+          .withActor("dev@example.com")
+          .at("2026-08-10T11:00:00.000Z")
+          .withFileChurn(3)
+          .build(),
+      ],
+    ] as const) {
+      await store.commitIngestion({
+        repositoryId: repository.id,
+        events: [event],
+        chunk: {
+          repositoryId: repository.id,
+          kinds: ["commit"],
+          days: [],
+          ingestedAt: NOW,
+        },
+        status: "active",
+        now: NOW,
+      });
+    }
+
+    // when
+    const [contributor] = await new ListContributorSummaries({ store }).run(WINDOW);
+
+    // then
+    // The scope counts in the unit the row ended up in, so the Azure DevOps
+    // commit is unmeasured here however much it reported: it said nothing in
+    // the unit this row prints.
+    expect(contributor.churnUnit).toBe("lines");
+    expect(contributor.churnScope).toEqual({ measured: 1, unmeasured: 1 });
+  });
+
   it("should prefer lines when a fleet spans both providers", async () => {
     // given
     const { store, discovered } = await seed(2);
