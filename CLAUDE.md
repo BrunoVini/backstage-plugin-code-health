@@ -532,10 +532,11 @@ The wire contract, and the pure functions both sides have to agree on.
   rebase is left alone; a build follows the commit it built. These figures are read as a measure
   of people, so a collector that stores what the provider stamped is a bug, not a simplification.
 - **The commits a merge commit brought in are fetched from the pull request.** They keep the dates
-  they were written on, so the branch history for the day of the merge never returns them, and the
-  day they were written was fetched before they were on the branch. Dropping the merge commit
-  without this would make the work vanish from everybody's row. They are stored under their own
-  dates and deduplicated by identifier against the history; a squash or a rebase needs none of it.
+  they were committed on, so the branch history for the day of the merge never returns them, and
+  the day they were committed was fetched before they were on the branch. Dropping the merge
+  commit without this would make the work vanish from everybody's row. They are stored under their
+  own dates and deduplicated by identifier against the history; a squash or a rebase needs none of
+  it.
 - **Azure DevOps reports no parent count on any list endpoint**, so a commit no pull request names
   is recognised as a merge commit by its message — only the forms git writes itself. Its own
   `Merged PR 123:` subject is written on squash commits too and proves nothing; the pull request's

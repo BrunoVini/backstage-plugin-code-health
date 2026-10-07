@@ -126,8 +126,8 @@ const identityName = (identity: AdoIdentityNode | undefined): string | null =>
  *
  * Every completion whose merge commit is dropped hides them, which is both the
  * plain merge and the rebase-and-merge. The plain merge hides them because the
- * commits keep the dates they were written on, so the branch history for the
- * day of the merge never returns them, and the day they were written was
+ * commits keep the dates they were committed on, so the branch history for the
+ * day of the merge never returns them, and the day they were committed was
  * fetched before they were on the branch. The rebase-and-merge hides them for
  * the same reason once the branch was rebased onto the target before it was
  * completed, which is what a policy that demands an up-to-date branch makes
@@ -135,8 +135,10 @@ const identityName = (identity: AdoIdentityNode | undefined): string | null =>
  * commits with the dates they already had. That is why this follows the
  * strategy attribution ends up with rather than the name the provider used —
  * whatever is dropped as a merge commit has to be asked for, or the work it
- * carried is lost. A squash puts one new commit on the branch and a rebase puts
- * rewritten ones there, both dated at the completion, so neither needs asking.
+ * carried is lost. A squash writes one new commit on the branch and a rebase
+ * rewrites the commits onto it with new committer dates at the completion —
+ * the date both the provider's filter and this collector go by — so neither
+ * needs asking.
  *
  * With no completion options at all the completion was a plain merge, which is
  * what Azure DevOps does when nothing says otherwise; `squashMerge` is the
@@ -531,7 +533,12 @@ export class AzureDevOpsCollector implements VcsCollector {
    * parents in, and the message is the only other evidence on offer.
    */
   private commitOf(repository: TrackedRepository, node: AdoCommitNode): CollectedCommit | null {
-    const occurredAt = isoOrNull(node.author?.date ?? node.committer?.date);
+    // The commit list is filtered by `fromDate`/`toDate`, which Azure DevOps
+    // reads against the *committer* date. Filing under the author date would
+    // store a commit on a day the window that found it never covered, and no
+    // window looks at that day again. The GitHub collector already uses the
+    // committed date on both sides.
+    const occurredAt = isoOrNull(node.committer?.date ?? node.author?.date);
     if (!node.commitId || !occurredAt) return null;
 
     const counts = node.changeCounts;
@@ -710,7 +717,7 @@ export class AzureDevOpsCollector implements VcsCollector {
   /**
    * The commits the pull requests completed with a merge commit brought in.
    *
-   * They keep the dates they were written on, so they are stored where they
+   * They keep the dates they were committed on, so they are stored where they
    * happened. The pull request's commit list carries no change counts, which
    * are what the churn column is made of, so the same commits are read back
    * through `commitsbatch` — which does — unless the list already had them.

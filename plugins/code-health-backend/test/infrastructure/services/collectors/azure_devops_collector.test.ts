@@ -51,7 +51,7 @@ const collect = async () => {
 
 describe("AzureDevOpsCollector", () => {
   describe("commits", () => {
-    it("should map a commit to an event on the author's date", async () => {
+    it("should map a commit to an event on the committer's date", async () => {
       // given
       server
         .onPath("/repositories/gateway", () => ({
@@ -72,6 +72,13 @@ describe("AzureDevOpsCollector", () => {
                   date: "2026-08-09T10:00:00Z",
                   imageUrl: "https://avatar",
                 },
+                // Deliberately a different day: the provider filters the list
+                // by this date, so this is the one the event is filed under.
+                committer: {
+                  name: "Dev Example",
+                  email: "Dev.Example@Corp.COM",
+                  date: "2026-09-01T10:00:00Z",
+                },
                 changeCounts: { Add: 2, Edit: 3, Delete: 1 },
               },
             ],
@@ -87,7 +94,7 @@ describe("AzureDevOpsCollector", () => {
       const commit = result.events.find((event) => event.kind === "commit");
       expect(commit).toMatchObject({
         externalId: "abc123",
-        occurredAt: new Date("2026-08-09T10:00:00Z"),
+        occurredAt: new Date("2026-09-01T10:00:00Z"),
         // Lowercased so the same person under a differently cased address is
         // one contributor row rather than two.
         actorKey: "dev.example@corp.com",
@@ -1017,7 +1024,7 @@ describe("AzureDevOpsCollector", () => {
       expect(result.events).toEqual([]);
     });
 
-    it("should fall back to the committer date when the author has none", async () => {
+    it("should fall back to the author date when the committer has none", async () => {
       // given
       server
         .onPath("/repositories/gateway", () => ({ body: { id: "guid-1" } }))
@@ -1026,7 +1033,7 @@ describe("AzureDevOpsCollector", () => {
             value: [
               {
                 commitId: "abc123",
-                committer: { uniqueName: "bot@example.com", date: "2026-08-09T10:00:00Z" },
+                author: { uniqueName: "bot@example.com", date: "2026-08-09T10:00:00Z" },
               },
             ],
           },
