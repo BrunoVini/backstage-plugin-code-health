@@ -1,0 +1,3 @@
+kind: 'Fixed'
+body: 'fixed Azure DevOps commits landing on a day no ingestion window covers again: the provider''s commit search filters by committer date while the collector filed the event under the author date, so a commit whose two dates straddle a window boundary was stored outside the window that found it and, with windows consumed exactly once and no lookback, was effectively invisible to every table it should have counted on. The collector now files under the committer date and falls back to the author date, matching the GitHub collector, which has always used the committed date on both sides; attribution is untouched -- the commit is still credited to its author'
+time: '2026-10-07T12:15:29.526163084Z'
