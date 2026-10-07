@@ -394,7 +394,7 @@ table is for. So:
 
 - A **squash commit** is credited to the pull request's author, whatever the provider stamped on it.
 - A **merge commit** is not counted at all — its diff is the sum of the commits it joins — and the
-  pull request's own commits are fetched and stored under the dates they were written, because the
+  pull request's own commits are fetched and stored under the dates they were committed, because the
   branch history for the day of the merge never returns them.
 - A **rebase** keeps every commit's own author and needs no correction.
 - A **pipeline run** belongs to the author of the change it built: the pull request whose merge

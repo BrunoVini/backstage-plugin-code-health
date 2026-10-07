@@ -23,7 +23,7 @@ Three kinds of commit are treated differently, and all three are commits a
 | The merge was a… | What lands on the branch | What is stored |
 |---|---|---|
 | **Squash** | One new commit carrying the whole pull request, stamped with whoever the provider chose | Credited to the **pull request's author**. On Azure DevOps the stamp is whoever pressed *Complete*; on GitHub it is already the author, and the rule is a no-op |
-| **Rebase** | The pull request's commits rewritten onto the branch, each with its own author | Kept as they are: git preserved the authors, and the rewrite dated them at the merge, so the branch history returns them under the right people |
+| **Rebase** | The pull request's commits rewritten onto the branch, each with its own author | Kept as they are: git preserved the authors, and the rewrite gave them new committer dates at the merge, which is what the branch history returns them by, so they land under the right people |
 | **Merge commit** | The pull request's commits as they were, plus one commit with two parents joining them | The merge commit is **not counted at all**, and the pull request's own commits are |
 
 A merge commit carries no work of its own. Its diff against the first parent is
@@ -49,21 +49,21 @@ whatever the provider stamped, because guessing either way could lose work.
 
 Ingestion reads the default branch's history a window at a time and records a
 day as fetched once a window has covered it. A commit brought in by a **merge
-commit** keeps the date it was written on — typically days before the merge —
+commit** keeps the date it was committed on — typically days before the merge —
 so the branch history for the day of the merge never returns it, and the day it
-was written was fetched *before it was on the branch*. Without a second look,
+was committed was fetched *before it was on the branch*. Without a second look,
 nothing would ever see it: the merge commit would be dropped, and the work
 would vanish from everybody's row.
 
 So for every pull request merged with a merge commit, its commits are asked for
-directly and stored **under the dates they were written**, deduplicated by
+directly and stored **under the dates they were committed**, deduplicated by
 identifier against anything the history already returned. On GitHub that is one
 extra GraphQL document per page of merged pull requests, plus one per further
 hundred commits a single pull request carries beyond its first. On Azure DevOps
 it is one request per such pull request for the commit list, and one more per
 hundred commits to read their change counts, which the list does not carry.
 Both walk a pull request's commits to the end: the ones past the first page
-were written on days already fetched, and nothing else will ever return them.
+were committed on days already fetched, and nothing else will ever return them.
 
 A squash or a rebase needs none of this: both put commits dated at the merge on
 the branch, and those the history already returns.
@@ -76,7 +76,7 @@ the branch, and those the history already returns.
 - **A merge pushed by hand loses its constituent commits.** A merge commit is
   dropped whether a pull request produced it or not, but only a pull request
   can be asked for the commits it brought in. A long-lived branch merged
-  locally and pushed, whose commits were written on days already walked, is
+  locally and pushed, whose commits were committed on days already walked, is
   invisible on an install whose backfill has passed those days: the work is
   counted on nobody's row, where an earlier release counted it on the pusher's.
   That is a deliberate trade, not an oversight. On a default branch the common
