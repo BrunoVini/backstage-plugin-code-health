@@ -5,7 +5,7 @@ import { anAzureRepository } from "../../../builders/tracked_repository_builder"
 import { ControlledClock } from "../../../doubles/controlled_clock";
 import { RecordingLogger } from "../../../doubles/recording_logger";
 import { StubCredentialsResolver } from "../../../doubles/stub_credentials_resolver";
-import { TestProviderServer } from "../../../doubles/test_provider_server";
+import { TestProviderServer, type RecordedRequest } from "../../../doubles/test_provider_server";
 
 const server = new TestProviderServer();
 
@@ -379,22 +379,38 @@ describe("AzureDevOpsCollector", () => {
       closedDate: "2026-08-09T15:00:00Z",
       createdBy: creator,
       lastMergeCommit: { commitId: "landed" },
+      lastMergeTargetCommit: { commitId: "target-tip" },
       ...overrides,
     });
 
-    const withClosed = (pullRequest: Record<string, unknown>, commits: Record<string, unknown>[]) =>
+    const isComparison = (request: RecordedRequest) =>
+      request.path.endsWith("/commits") && request.query.has("searchCriteria.compareVersion.version");
+
+    const comparisonRequests = () => server.requests.filter(isComparison);
+
+    /** Answers the per-pull-request comparison; register it before `withClosed`. */
+    const onComparison = (reply: (request: RecordedRequest) => { body: unknown }) =>
+      server.route((request) => (isComparison(request) ? reply(request) : undefined));
+
+    const withClosedPullRequests = (
+      pullRequests: Record<string, unknown>[],
+      commits: Record<string, unknown>[],
+    ) =>
       server
         .onPath("/repositories/gateway", () => ({ body: { id: "guid-1" } }))
         .on("/pullrequests", (request) => ({
           body: {
             value:
               request.query.get("searchCriteria.queryTimeRangeType") === "closed"
-                ? [pullRequest]
+                ? pullRequests
                 : [],
           },
         }))
         .on("/commits", () => ({ body: { value: commits } }))
         .on("/build/builds", () => ({ body: { value: [] } }));
+
+    const withClosed = (pullRequest: Record<string, unknown>, commits: Record<string, unknown>[]) =>
+      withClosedPullRequests([pullRequest], commits);
 
     it("should credit a squash commit to the pull request's creator", async () => {
       // given
@@ -421,7 +437,7 @@ describe("AzureDevOpsCollector", () => {
         changedFiles: 5,
       });
       expect(commit?.payload).toMatchObject({ pullRequestId: "42" });
-      expect(server.requests.filter((request) => request.path.includes("/pullrequests/42/commits"))).toEqual([]);
+      expect(comparisonRequests()).toEqual([]);
     });
 
     it("should honour the boolean an older completion recorded a squash with", async () => {
@@ -440,44 +456,36 @@ describe("AzureDevOpsCollector", () => {
       expect(result.events.find((event) => event.kind === "commit")?.actorKey).toBe("author@example.com");
     });
 
-    it("should drop the merge commit of a plain merge and count the pull request's own commits", async () => {
+    it("should list what a plain merge landed between the target's tip and the merge commit", async () => {
       // given
       // With no completion options the completion was a plain merge, whose
       // commits keep the dates they were written on and never appear in the
       // branch history for the day of the merge.
-      server
-        .onPath("/pullrequests/42/commits", () => ({
-          body: {
-            value: [
-              {
-                commitId: "work-1",
-                comment: "added the thing",
-                author: { name: "Author", email: "author@example.com", date: "2026-08-06T10:00:00Z" },
-              },
-              {
-                commitId: "work-2",
-                comment: "Merge branch 'main' into feature/thing",
-                author: { name: "Author", email: "author@example.com", date: "2026-08-07T10:00:00Z" },
-              },
-            ],
-          },
-        }))
-        .on("/commitsbatch", (request) => ({
-          body: {
-            value: (JSON.parse(request.body) as { ids: string[] }).ids.map((commitId) => ({
-              commitId,
-              changeCounts: { Edit: commitId === "work-1" ? 4 : 400 },
-            })),
-          },
-        }));
-      withClosed(completed({}), [
-        {
-          commitId: "landed",
-          comment: "Merged PR 42: add the thing",
-          author: { email: "merger@example.com", date: "2026-08-09T15:00:00Z" },
-          changeCounts: { Add: 2, Edit: 402 },
+      onComparison(() => ({
+        body: {
+          value: [
+            {
+              commitId: "landed",
+              comment: "Merged PR 42: add the thing",
+              author: { email: "merger@example.com", date: "2026-08-09T15:00:00Z" },
+              changeCounts: { Edit: 404 },
+            },
+            {
+              commitId: "work-1",
+              comment: "added the thing",
+              author: { name: "Author", email: "author@example.com", date: "2026-08-06T10:00:00Z" },
+              changeCounts: { Edit: 4 },
+            },
+            {
+              commitId: "work-2",
+              comment: "Merge branch 'main' into feature/thing",
+              author: { name: "Author", email: "author@example.com", date: "2026-08-07T10:00:00Z" },
+              changeCounts: { Edit: 400 },
+            },
+          ],
         },
-      ]);
+      }));
+      withClosed(completed({}), []);
 
       // when
       const result = await collect();
@@ -492,57 +500,93 @@ describe("AzureDevOpsCollector", () => {
         occurredAt: new Date("2026-08-06T10:00:00Z"),
         changedFiles: 4,
       });
-      const batch = server.requests.find((request) => request.path.endsWith("/commitsbatch"));
-      expect(batch?.method).toBe("POST");
-      expect(JSON.parse(batch!.body)).toEqual({ ids: ["work-1", "work-2"] });
     });
 
-    it("should not ask for change counts the pull request's commit list already carried", async () => {
+    it("should ask with the target's tip as the item and the merge commit as the compare version", async () => {
       // given
-      server.onPath("/pullrequests/42/commits", () => ({
+      // The reverse orientation returns an empty list on a real organisation.
+      onComparison(() => ({ body: { value: [] } }));
+      withClosed(completed({ completionOptions: { mergeStrategy: "noFastForward" } }), []);
+
+      // when
+      await collect();
+
+      // then
+      const [request] = comparisonRequests();
+      expect(request.path).toMatch(/\/_apis\/git\/repositories\/guid-1\/commits$/);
+      expect(request.query.get("searchCriteria.itemVersion.version")).toBe("target-tip");
+      expect(request.query.get("searchCriteria.itemVersion.versionType")).toBe("commit");
+      expect(request.query.get("searchCriteria.compareVersion.version")).toBe("landed");
+      expect(request.query.get("searchCriteria.compareVersion.versionType")).toBe("commit");
+      expect(request.query.has("searchCriteria.fromDate")).toBe(false);
+    });
+
+    it("should drop the merge commit, which the list does not mark by its parents", async () => {
+      // given
+      // A merge commit whose message git did not write is not recognised as
+      // one by its message, so only its identifier gives it away.
+      onComparison(() => ({
         body: {
           value: [
             {
+              commitId: "landed",
+              comment: "Integrated the feature branch",
+              author: { email: "merger@example.com", date: "2026-08-09T15:00:00Z" },
+              changeCounts: { Edit: 4 },
+            },
+            {
               commitId: "work-1",
               author: { email: "author@example.com", date: "2026-08-06T10:00:00Z" },
-              changeCounts: { Add: 1 },
+              changeCounts: { Edit: 4 },
             },
           ],
         },
       }));
-      withClosed(completed({ completionOptions: { mergeStrategy: "noFastForward" } }), []);
-
-      // when
-      const result = await collect();
-
-      // then
-      expect(result.events.find((event) => event.kind === "commit")?.changedFiles).toBe(1);
-      expect(server.requestsFor("/pullrequests/42/commits")).toHaveLength(1);
-      expect(server.requests.filter((request) => request.path.endsWith("/commitsbatch"))).toEqual([]);
-    });
-
-    it("should follow the continuation token across a pull request's commit pages", async () => {
-      // given
-      let served = 0;
-      server.onPath("/pullrequests/42/commits", () => {
-        served += 1;
-        return served === 1
-          ? {
-              body: { value: [{ commitId: "work-1", author: { email: "author@example.com", date: "2026-08-06T10:00:00Z" }, changeCounts: {} }] },
-              headers: { "x-ms-continuationtoken": "page-2" },
-            }
-          : {
-              body: { value: [{ commitId: "work-2", author: { email: "author@example.com", date: "2026-08-07T10:00:00Z" }, changeCounts: {} }] },
-            };
-      });
       withClosed(completed({}), []);
 
       // when
       const result = await collect();
 
       // then
-      expect(result.events.filter((event) => event.kind === "commit").map((event) => event.externalId)).toEqual(["work-1", "work-2"]);
-      expect(server.requestsFor("/pullrequests/42/commits")[1].query.get("continuationToken")).toBe("page-2");
+      expect(result.events.filter((event) => event.kind === "commit").map((event) => event.externalId)).toEqual(["work-1"]);
+    });
+
+    it("should keep a commit the list reports no change counts for unmeasured, not empty", async () => {
+      // given
+      onComparison(() => ({
+        body: {
+          value: [{ commitId: "work-1", author: { email: "author@example.com", date: "2026-08-06T10:00:00Z" } }],
+        },
+      }));
+      withClosed(completed({}), []);
+
+      // when
+      const result = await collect();
+
+      // then
+      expect(result.events.find((event) => event.kind === "commit")?.changedFiles).toBeNull();
+    });
+
+    it("should page through a large pull request with $skip", async () => {
+      // given
+      const page = (from: number, count: number) =>
+        Array.from({ length: count }, (_unused, index) => ({
+          commitId: `work-${from + index}`,
+          author: { email: "author@example.com", date: "2026-08-06T10:00:00Z" },
+          changeCounts: { Edit: 1 },
+        }));
+      onComparison((request) => ({
+        body: { value: request.query.get("searchCriteria.$skip") === "0" ? page(0, 200) : page(200, 3) },
+      }));
+      withClosed(completed({}), []);
+
+      // when
+      const result = await collect();
+
+      // then
+      expect(result.events.filter((event) => event.kind === "commit")).toHaveLength(203);
+      expect(comparisonRequests().map((request) => request.query.get("searchCriteria.$skip"))).toEqual(["0", "200"]);
+      expect(comparisonRequests()[0].query.get("searchCriteria.$top")).toBe("200");
     });
 
     it("should leave a rebase completion's commits as the provider reported them", async () => {
@@ -565,50 +609,144 @@ describe("AzureDevOpsCollector", () => {
       const commit = result.events.find((event) => event.kind === "commit");
       expect(commit?.actorKey).toBe("author@example.com");
       expect(commit?.payload).not.toHaveProperty("pullRequestId");
-      expect(server.requests.filter((request) => request.path.includes("/pullrequests/42/commits"))).toEqual([]);
+      expect(comparisonRequests()).toEqual([]);
     });
 
-    it("should ask a rebase-and-merge for the commits its dropped merge commit landed", async () => {
+    it("should store a rebase-and-merge's landed commits once, though the branch history returns them too", async () => {
       // given
-      // A branch rebased onto the target before it was completed leaves Azure
-      // DevOps nothing to rewrite, so the commits land with the dates they were
-      // written on and the branch history for the day of the merge misses them
-      // exactly as it misses a plain merge's. Dropping the merge commit without
-      // asking for them would throw the whole change away.
-      server.onPath("/pullrequests/42/commits", () => ({
-        body: {
-          value: [
-            {
-              commitId: "work-1",
-              comment: "added the thing",
-              author: { name: "Author", email: "author@example.com", date: "2026-08-06T10:00:00Z" },
-              changeCounts: { Edit: 7 },
-            },
-          ],
-        },
-      }));
-      withClosed(completed({ completionOptions: { mergeStrategy: "rebaseMerge" } }), [
-        {
-          commitId: "landed",
-          comment: "Merged PR 42: add the thing",
-          author: { email: "merger@example.com", date: "2026-08-09T15:00:01Z" },
-          changeCounts: { Edit: 7 },
-        },
-      ]);
+      // The comparison returns the rewritten commits that actually landed, the
+      // same identifiers the branch history reports when their dates fall in
+      // the window, so the two meet by identifier instead of doubling up.
+      const rewritten = {
+        commitId: "rewritten-1",
+        comment: "added the thing",
+        author: { name: "Author", email: "author@example.com", date: "2026-08-09T14:59:00Z" },
+        changeCounts: { Edit: 7 },
+      };
+      const mergeCommit = {
+        commitId: "landed",
+        comment: "Merged PR 42: add the thing",
+        author: { email: "merger@example.com", date: "2026-08-09T15:00:01Z" },
+        changeCounts: { Edit: 7 },
+      };
+      onComparison(() => ({ body: { value: [mergeCommit, rewritten] } }));
+      withClosed(completed({ completionOptions: { mergeStrategy: "rebaseMerge" } }), [mergeCommit, rewritten]);
 
       // when
       const result = await collect();
 
       // then
       const commits = result.events.filter((event) => event.kind === "commit");
-      expect(commits.map((event) => event.externalId)).toEqual(["work-1"]);
-      expect(commits[0]).toMatchObject({
-        actorKey: "author@example.com",
-        actorName: "Author",
-        occurredAt: new Date("2026-08-06T10:00:00Z"),
-        changedFiles: 7,
+      expect(commits.map((event) => event.externalId)).toEqual(["rewritten-1"]);
+      expect(commits[0]).toMatchObject({ actorKey: "author@example.com", changedFiles: 7 });
+      expect(comparisonRequests()).toHaveLength(1);
+    });
+
+    it("should collect a pull request completed long after its commits were dated", async () => {
+      // given
+      // Auto-complete fired overnight, fourteen hours after the merge was
+      // prepared: the commits are dated in a window already walked, and only
+      // the comparison made in the window the pull request closes returns them.
+      onComparison(() => ({
+        body: {
+          value: [
+            {
+              commitId: "rewritten-1",
+              author: { email: "author@example.com", date: "2026-08-08T10:00:00Z" },
+              committer: { date: "2026-08-08T10:00:00Z" },
+              changeCounts: { Edit: 2 },
+            },
+          ],
+        },
+      }));
+      withClosed(
+        completed({ closedDate: "2026-08-09T00:00:00Z", completionOptions: { mergeStrategy: "rebaseMerge" } }),
+        [],
+      );
+
+      // when
+      const result = await collect();
+
+      // then
+      expect(result.events.find((event) => event.kind === "commit")).toMatchObject({
+        externalId: "rewritten-1",
+        occurredAt: new Date("2026-08-08T10:00:00Z"),
       });
-      expect(server.requestsFor("/pullrequests/42/commits")).toHaveLength(1);
+    });
+
+    it("should make one request per pull request completed with a merge commit, and none for a squash or a rebase", async () => {
+      // given
+      onComparison(() => ({ body: { value: [] } }));
+      withClosedPullRequests(
+        [
+          completed({ pullRequestId: 41, lastMergeCommit: { commitId: "m-41" } }),
+          completed({
+            pullRequestId: 42,
+            lastMergeCommit: { commitId: "m-42" },
+            completionOptions: { mergeStrategy: "noFastForward" },
+          }),
+          completed({
+            pullRequestId: 43,
+            lastMergeCommit: { commitId: "m-43" },
+            completionOptions: { mergeStrategy: "rebaseMerge" },
+          }),
+          completed({
+            pullRequestId: 44,
+            lastMergeCommit: { commitId: "m-44" },
+            completionOptions: { mergeStrategy: "squash" },
+          }),
+          completed({
+            pullRequestId: 45,
+            lastMergeCommit: { commitId: "m-45" },
+            completionOptions: { mergeStrategy: "rebase" },
+          }),
+        ],
+        [],
+      );
+
+      // when
+      await collect();
+
+      // then
+      expect(comparisonRequests().map((request) => request.query.get("searchCriteria.compareVersion.version"))).toEqual([
+        "m-41",
+        "m-42",
+        "m-43",
+      ]);
+      expect(server.requests.filter((request) => /\/pullrequests\/\d+\/commits$/.test(request.path))).toEqual([]);
+      expect(server.requests.filter((request) => request.path.endsWith("/commitsbatch"))).toEqual([]);
+      // The repository lookup, the branch history, the two pull request lists,
+      // the builds, and the three comparisons.
+      expect(server.requests).toHaveLength(8);
+    });
+
+    it("should skip a pull request missing its merge or target commit, and say so", async () => {
+      // given
+      onComparison(() => ({
+        body: { value: [{ commitId: "work-43", author: { email: "author@example.com", date: "2026-08-06T10:00:00Z" } }] },
+      }));
+      withClosedPullRequests(
+        [
+          completed({ pullRequestId: 41, lastMergeCommit: null }),
+          completed({ pullRequestId: 42, lastMergeTargetCommit: undefined }),
+          completed({ pullRequestId: 43 }),
+        ],
+        [],
+      );
+      const { collector, logger } = createCollector();
+
+      // when
+      const result = await collector.collect(anAzureRepository(server.baseUrl), WINDOW, {
+        budget: new RequestBudget(50),
+      });
+
+      // then
+      expect(comparisonRequests()).toHaveLength(1);
+      expect(result.events.filter((event) => event.kind === "commit").map((event) => event.externalId)).toEqual(["work-43"]);
+      expect(logger.at("warn")).toEqual([
+        expect.stringContaining("pull request 41"),
+        expect.stringContaining("pull request 42"),
+      ]);
     });
 
     it("should keep the stamp on a completion strategy it does not know", async () => {

@@ -64,6 +64,12 @@ export interface AdoPullRequestNode {
    */
   readonly lastMergeCommit?: { readonly commitId?: string } | null;
   /**
+   * The target branch's tip the completion merged into. Listing the commits
+   * reachable from `lastMergeCommit` but not from this one gives exactly what
+   * the completion put on the branch.
+   */
+  readonly lastMergeTargetCommit?: { readonly commitId?: string } | null;
+  /**
    * How the pull request was completed. `mergeStrategy` is the current field;
    * `squashMerge` is the boolean it replaced and is still set on older
    * completions.
