@@ -1,3 +1,0 @@
-kind: 'Fixed'
-body: 'fixed the productivity score rating a contributor higher for losing more churn data; a window with commits and no surviving churn figure is now scored as a measured zero instead of being dropped, and `ContributorSummary` carries a new `churnScope` field disclosing how many commits carried a figure'
-time: '2026-10-06T18:35:41.830697946Z'

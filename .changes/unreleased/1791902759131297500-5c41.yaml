@@ -1,3 +1,0 @@
-kind: 'Security'
-body: 'pinned handlebars to 4.7.10 through `resolutions`, closing two critical JavaScript-injection advisories (GHSA-p8wg-vrv2-v86f and the AST type-confusion bypass of CVE-2026-33937) that fail `yarn npm audit --severity high`. handlebars reaches the repository only through `@backstage/cli-module-new`; the lockfile change is that one package, so no natively built dependency changes its tree hash'
-time: '2026-10-13T14:45:59.131297000Z'

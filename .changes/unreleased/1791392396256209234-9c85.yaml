@@ -1,3 +1,0 @@
-kind: 'Fixed'
-body: 'fixed Jira resolved-ticket counts missing most of a busy project: the snapshot read issues newest-updated first and stopped at 1,000 per project, so a project updating more than that inside the window lost every older resolution. The scan now pages until Jira reports the last page; `maxIssuesPerProject` is an optional ceiling, unset by default. Running out of `requestBudgetPerRun` now warns with the project it stopped at and the setting to raise, and the log line printed at the ceiling names `maxIssuesPerProject` rather than `maxResultsPerRun`'
-time: '2026-10-07T16:59:56.25615662Z'

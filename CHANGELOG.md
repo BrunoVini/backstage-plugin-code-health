@@ -13,6 +13,31 @@ nothing.
 
 ## [Unreleased]
 
+## [6.0.0] - 2026-10-16
+
+### Added
+
+- added a distinct reading for a repository SonarQube analyses but publishes no coverage for, which until now showed the same dash as a repository with no Sonar project at all: the Repositories and Contributors tables mark it "not reported", and the Insights coverage card gains a "No coverage reported" tile, because that card leaves those repositories out of its average, median and below-target figures and nothing on the page said they existed. A contributor row also carries an optional `coverageScope`, so an average taken over only some of the repositories touched is marked rather than printed bare -- the aggregate is null only when every repository is unmeasurable, so the partial case had no other signal
+
+### Changed
+
+- changed `.gitignore` to carry the block `make gitignore` generates from the shared pipeline, so the CodeQL database a failed scan leaves behind and the other files the pipeline writes into the working tree are ignored instead of waiting to be committed
+
+### Fixed
+
+- **BREAKING CHANGE:** widened `SonarMetrics.coverage` from `number` to `number | null` in `@rios0rios0/backstage-plugin-code-health-common`, so code reading it must now handle the absent case or stop compiling. SonarQube publishes no `coverage` measure for a project with no executable lines -- Terraform, configuration, a theme -- and reading that absence as 0% dragged down the coverage component of everybody who touched it. Such a project is now left out of a contributor coverage average, of the Insights median and below-target count, and of the lowest-coverage ranking, and leaves its weight out of the score rather than scoring zero. Rows already stored keep the coverage they were captured with until the next snapshot replaces them
+- fixed a test that asserted the length of last month and so passed or failed by the calendar rather than by the code: the reset dialog reads `new Date()` itself, and the suite expected `1 month (31 days)` against the real clock, which is wrong in any month whose predecessor has thirty
+- fixed Azure DevOps commits landing on a day no ingestion window covers again: the provider's commit search filters by committer date while the collector filed the event under the author date, so a commit whose two dates straddle a window boundary was stored outside the window that found it and, with windows consumed exactly once and no lookback, was effectively invisible to every table it should have counted on. The collector now files under the committer date and falls back to the author date, matching the GitHub collector, which has always used the committed date on both sides; attribution is untouched -- the commit is still credited to its author
+- fixed Jira resolved-ticket counts missing most of a busy project: the snapshot read issues newest-updated first and stopped at 1,000 per project, so a project updating more than that inside the window lost every older resolution. The scan now pages until Jira reports the last page; `maxIssuesPerProject` is an optional ceiling, unset by default. Running out of `requestBudgetPerRun` now warns with the project it stopped at and the setting to raise, and the log line printed at the ceiling names `maxIssuesPerProject` rather than `maxResultsPerRun`
+- fixed the commits of an Azure DevOps pull request completed with a merge commit being stored with no changed files, because neither the pull request's commit list nor `commitsbatch` reports change counts, and a rebase-and-merge storing the commits as written rather than as landed, which the branch history could then count a second time under the rewritten identifiers. Each such pull request is now read, in the window it closes, with one commit list request between the target branch's tip it merged into and its merge commit, paged past two hundred commits: that returns exactly the commits the completion put on the branch, with their change counts. A pull request missing either commit is skipped with a warning
+- fixed the productivity score rating a contributor higher for losing more churn data; a window with commits and no surviving churn figure is now scored as a measured zero instead of being dropped, and `ContributorSummary` carries a new `churnScope` field disclosing how many commits carried a figure
+- fixed the work lost from every Azure DevOps pull request completed with rebase-and-merge: the merge commit that carried the whole change was dropped as a merge commit while the commits under it were never asked for, so a contributor who completed that way was credited with a fraction of what they wrote -- one day measured kept 1 commit and 4 changed files out of 18 commits and 31 files -- which understated code churn and, through it, the productivity score. The pull request's own commits are now collected exactly as they already were for a plain merge
+
+### Security
+
+- cleared the high-severity dependency audit: proxy-addr was raised to 2.0.8, closing a critical IP-spoofing advisory, and compression to 1.8.2. The three findings that remain are each recorded with the reason no version fixes them today -- braces has no patched release at all, source-map-js has one published too recently for this repository seven-day minimum release age and clears on 2026-10-07, and http-cache-semantics has one whose pin changes the dependency-tree hash of every natively built package and so rebuilds better-sqlite3, cpu-features, keytar and ssh2 past the CI job timeout
+- pinned handlebars to 4.7.10 through `resolutions`, closing two critical JavaScript-injection advisories (GHSA-p8wg-vrv2-v86f and the AST type-confusion bypass of CVE-2026-33937) that fail `yarn npm audit --severity high`. handlebars reaches the repository only through `@backstage/cli-module-new`; the lockfile change is that one package, so no natively built dependency changes its tree hash
+
 ## [5.3.0] - 2026-09-29
 
 ### Added
