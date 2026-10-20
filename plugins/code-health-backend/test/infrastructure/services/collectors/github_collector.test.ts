@@ -368,13 +368,14 @@ describe("GithubCollector", () => {
 
       // then
       // The `pullRequests` connection has no date filter at all, so search is
-      // the only way to bound a window.
+      // the only way to bound a window. Closed ones reach two days further
+      // back, for attribution only.
       const searches = server.requests
         .filter((request) => request.body.includes("CodeHealthPullRequests"))
         .map((request) => graphqlVariables(request.body).search);
       expect(searches).toEqual([
         "repo:rios0rios0/pipelines is:pr created:2026-08-09..2026-08-10",
-        "repo:rios0rios0/pipelines is:pr closed:2026-08-09..2026-08-10",
+        "repo:rios0rios0/pipelines is:pr closed:2026-08-07..2026-08-10",
       ]);
     });
 
@@ -892,6 +893,65 @@ describe("GithubCollector", () => {
         actorAvatarUrl: "https://avatar/author",
       });
       expect(build?.payload).toMatchObject({ commitSha: "merge-sha" });
+    });
+
+    it("should credit a run to the author of a pull request merged before the window", async () => {
+      // given
+      // The run finishes minutes after the merge, and ingestion runs every few
+      // minutes, so the merge was read by the window before this one. Without
+      // it in the lookup the run fell through to its actor, the merger.
+      server
+        .on("/actions/runs", () => ({
+          body: {
+            workflow_runs: [
+              {
+                id: 901,
+                head_branch: "main",
+                head_sha: "merge-sha",
+                conclusion: "success",
+                updated_at: "2026-08-09T00:05:00Z",
+                actor: { login: "Merger" },
+              },
+            ],
+          },
+        }))
+        .on("/graphql", (request) => {
+          if (operationOf(request.body) === "history") return { body: emptyHistory };
+          const search = String(graphqlVariables(request.body).search);
+          if (!search.includes("closed:")) return { body: emptySearch };
+          return {
+            body: {
+              data: {
+                search: {
+                  pageInfo: {},
+                  nodes: [
+                    {
+                      id: "PR_node_42",
+                      number: 42,
+                      mergedAt: "2026-08-08T23:58:00Z",
+                      author: { login: "Author" },
+                      mergeCommit: { oid: "merge-sha", parents: { totalCount: 2 } },
+                      reviews: { nodes: [{ id: "R_1", state: "APPROVED", author: { login: "Reviewer" } }] },
+                    },
+                  ],
+                },
+              },
+            },
+          };
+        });
+
+      // when
+      const result = await collect();
+
+      // then
+      expect(result.events).toEqual([
+        expect.objectContaining({ kind: "build", externalId: "901", actorKey: "author" }),
+      ]);
+      // The window that saw it merge counted it, its reviews and the commits
+      // its merge commit brought in; this one only reads whose work it was.
+      expect(
+        server.requests.filter((request) => request.body.includes("CodeHealthPullRequestCommits")),
+      ).toEqual([]);
     });
 
     it("should credit a run to the author of the commit it built", async () => {

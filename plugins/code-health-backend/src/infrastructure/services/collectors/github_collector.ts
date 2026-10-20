@@ -7,6 +7,7 @@ import type {
 } from "../../../domain/entities/code_health_event";
 import {
   attributeMergedWork,
+  PULL_REQUEST_LOOKBACK_MS,
   type CollectedBuild,
   type CollectedCommit,
   type MergedPullRequest,
@@ -581,6 +582,10 @@ export class GithubCollector implements VcsCollector {
   ): Promise<CollectedPullRequests> {
     const slug = `${repository.owner}/${repository.name}`;
     const range = `${searchDate(window.from)}..${searchDate(window.to)}`;
+    // Closed pull requests are searched for further back than the window, for
+    // attribution only; see `PULL_REQUEST_LOOKBACK_MS`.
+    const lookback = new Date(window.from.getTime() - PULL_REQUEST_LOOKBACK_MS);
+    const closedRange = `${searchDate(lookback)}..${searchDate(window.to)}`;
 
     const [opened, closed] = await Promise.all([
       this.searchPullRequests(
@@ -593,7 +598,7 @@ export class GithubCollector implements VcsCollector {
       ),
       this.searchPullRequests(
         repository,
-        `repo:${slug} is:pr closed:${range}`,
+        `repo:${slug} is:pr closed:${closedRange}`,
         "closed",
         window,
         headers,
@@ -603,9 +608,10 @@ export class GithubCollector implements VcsCollector {
 
     // Only a merge commit hides the pull request's commits from the branch
     // history; a squash or a rebase puts commits dated at the merge on it, and
-    // those the history already returns.
+    // those the history already returns. They are asked for only by the window
+    // the pull request merged in; the earlier ones are here to be looked up.
     const needingCommits = closed.merged
-      .filter((entry) => entry.strategy === "merge_commit")
+      .filter((entry) => entry.strategy === "merge_commit" && entry.inWindow)
       .map((entry) => entry.nodeId)
       .filter((id): id is string => id !== null);
 
@@ -632,10 +638,10 @@ export class GithubCollector implements VcsCollector {
     context: CollectorContext,
   ): Promise<{
     events: CodeHealthEvent[];
-    merged: (MergedPullRequest & { nodeId: string | null })[];
+    merged: (MergedPullRequest & { nodeId: string | null; inWindow: boolean })[];
   }> {
     const events: CodeHealthEvent[] = [];
-    const merged: (MergedPullRequest & { nodeId: string | null })[] = [];
+    const merged: (MergedPullRequest & { nodeId: string | null; inWindow: boolean })[] = [];
     let cursor: string | null = null;
 
     for (let page = 0; page < MAX_PAGES; page += 1) {
@@ -650,13 +656,15 @@ export class GithubCollector implements VcsCollector {
         const pullRequestEvents = this.pullRequestEvents(repository, node, range, window);
         events.push(...pullRequestEvents);
 
-        // Only a pull request whose closing landed in this window decides
-        // attribution; one merged earlier decided it in the window it was
-        // merged in.
-        if (range === "closed" && node.mergedAt && pullRequestEvents.length > 0) {
+        // Every merged pull request the search returned decides attribution,
+        // the ones merged before the window included: a run read in this window
+        // routinely built a merge an earlier window read. Only the ones that
+        // closed in this window produced events above.
+        if (range === "closed" && node.mergedAt) {
           merged.push({
             externalId: String(node.number),
             nodeId: node.id ?? null,
+            inWindow: pullRequestEvents.length > 0,
             mergeCommitId: node.mergeCommit?.oid ?? null,
             strategy: strategyOf(node),
             author: {

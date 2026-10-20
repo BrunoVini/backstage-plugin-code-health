@@ -830,6 +830,92 @@ describe("AzureDevOpsCollector", () => {
       expect(result.events.find((event) => event.kind === "build")?.actorKey).toBe("author@example.com");
     });
 
+    it("should look up completions from before the window, without counting them again", async () => {
+      // given
+      withEmptyDefaults();
+
+      // when
+      await collect();
+
+      // then
+      const minTimes = new Map(
+        server
+          .requestsFor("/pullrequests")
+          .map((request) => [
+            request.query.get("searchCriteria.queryTimeRangeType"),
+            request.query.get("searchCriteria.minTime"),
+          ]),
+      );
+      expect(minTimes.get("created")).toBe(WINDOW.from.toISOString());
+      expect(minTimes.get("closed")).toBe("2026-08-07T00:00:00.000Z");
+      expect(server.requestsFor("/pullrequests")).toHaveLength(2);
+    });
+
+    it("should credit work built from a pull request completed before the window to its creator", async () => {
+      // given
+      // The post-completion build finishes minutes after the completion, and
+      // ingestion runs every few minutes, so the completion was read by the
+      // window before this one. Without it in the lookup the build fell
+      // through to `requestedFor`, which is whoever pressed Complete.
+      server.on("/build/builds", () => ({
+        body: {
+          value: [
+            {
+              id: 900,
+              result: "succeeded",
+              finishTime: "2026-08-09T00:04:00Z",
+              sourceVersion: "landed",
+              requestedFor: completer,
+            },
+            {
+              id: 901,
+              result: "succeeded",
+              finishTime: "2026-08-09T00:05:00Z",
+              sourceVersion: "merged-41",
+              requestedFor: completer,
+            },
+          ],
+        },
+      }));
+      onComparison(() => ({ body: { value: [] } }));
+      withClosedPullRequests(
+        [
+          completed({
+            closedDate: "2026-08-08T23:58:00Z",
+            completionOptions: { mergeStrategy: "squash" },
+            reviewers: [{ id: "r-1", uniqueName: "reviewer@example.com", vote: 10 }],
+          }),
+          completed({
+            pullRequestId: 41,
+            closedDate: "2026-08-08T23:59:00Z",
+            lastMergeCommit: { commitId: "merged-41" },
+          }),
+        ],
+        [
+          {
+            commitId: "landed",
+            comment: "Merged PR 42: add the thing",
+            author: { email: "merger@example.com", date: "2026-08-09T00:00:30Z" },
+          },
+        ],
+      );
+
+      // when
+      const result = await collect();
+
+      // then
+      expect(result.events.filter((event) => event.kind !== "pr_review" && event.kind !== "pull_request")).toEqual([
+        expect.objectContaining({ kind: "commit", externalId: "landed", actorKey: "author@example.com" }),
+        expect.objectContaining({ kind: "build", externalId: "900", actorKey: "author@example.com" }),
+        expect.objectContaining({ kind: "build", externalId: "901", actorKey: "author@example.com" }),
+      ]);
+      // The window that saw them close counted them, their reviews and the
+      // commits a merge brought in; this one only reads who they belong to.
+      expect(result.events.filter((event) => event.kind === "pull_request")).toEqual([]);
+      expect(result.events.filter((event) => event.kind === "pr_review")).toEqual([]);
+      expect(comparisonRequests()).toEqual([]);
+    });
+
     it("should not count a reviewer who never voted", async () => {
       // given
       // Azure DevOps lists everyone a policy or a person added, and most of

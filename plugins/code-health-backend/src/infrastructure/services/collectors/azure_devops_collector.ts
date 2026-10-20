@@ -8,6 +8,7 @@ import type {
 import {
   attributeMergedWork,
   isGitMergeMessage,
+  PULL_REQUEST_LOOKBACK_MS,
   type CollectedBuild,
   type CollectedCommit,
   type MergedPullRequest,
@@ -623,6 +624,10 @@ export class AzureDevOpsCollector implements VcsCollector {
     const events: CodeHealthEvent[] = [];
     const merged: MergedPullRequest[] = [];
     const needingCommits: PullRequestNeedingCommits[] = [];
+    // Closed pull requests are read from further back than the window, for
+    // attribution only; see `PULL_REQUEST_LOOKBACK_MS`.
+    const minTime =
+      range === "closed" ? new Date(window.from.getTime() - PULL_REQUEST_LOOKBACK_MS) : window.from;
 
     for (let page = 0; page < MAX_PAGES; page += 1) {
       const parameters = new URLSearchParams({
@@ -632,7 +637,7 @@ export class AzureDevOpsCollector implements VcsCollector {
         // is why a naive query appears to show almost nothing.
         "searchCriteria.status": "all",
         "searchCriteria.queryTimeRangeType": range,
-        "searchCriteria.minTime": window.from.toISOString(),
+        "searchCriteria.minTime": minTime.toISOString(),
         "searchCriteria.maxTime": window.to.toISOString(),
         $top: String(PAGE_SIZE),
         $skip: String(page * PAGE_SIZE),
@@ -652,6 +657,7 @@ export class AzureDevOpsCollector implements VcsCollector {
         const closedAt = isoOrNull(node.closedDate);
         const occurredAt = range === "created" ? createdAt : closedAt;
         if (!occurredAt) continue;
+        const inWindow = occurredAt >= window.from;
 
         // A pull request opened in one window and closed in another produces
         // one event in each, with distinct identifiers. Counting "opened" and
@@ -664,6 +670,30 @@ export class AzureDevOpsCollector implements VcsCollector {
           range === "created"
             ? "open"
             : (PULL_REQUEST_OUTCOMES.get(node.status ?? "") ?? "abandoned");
+
+        if (range === "closed" && outcome === "merged") {
+          const completion = completionOf(node);
+          merged.push({
+            externalId: String(node.pullRequestId),
+            mergeCommitId: node.lastMergeCommit?.commitId ?? null,
+            strategy: completion.strategy,
+            author: {
+              actorKey: identityKey(node.createdBy),
+              actorName: identityName(node.createdBy),
+              actorAvatarUrl: node.createdBy?.imageUrl ?? null,
+            },
+          });
+          if (completion.fetchesCommits && inWindow) {
+            needingCommits.push({
+              pullRequestId: node.pullRequestId,
+              mergeCommitId: node.lastMergeCommit?.commitId ?? null,
+              targetCommitId: node.lastMergeTargetCommit?.commitId ?? null,
+            });
+          }
+        }
+
+        // Closed before the window: looked up above, counted by its own window.
+        if (!inWindow) continue;
 
         events.push({
           repositoryId: repository.id,
@@ -690,27 +720,6 @@ export class AzureDevOpsCollector implements VcsCollector {
 
         if (range === "closed") {
           events.push(...this.reviewEvents(repository, node, occurredAt));
-        }
-
-        if (range === "closed" && outcome === "merged") {
-          const completion = completionOf(node);
-          merged.push({
-            externalId: String(node.pullRequestId),
-            mergeCommitId: node.lastMergeCommit?.commitId ?? null,
-            strategy: completion.strategy,
-            author: {
-              actorKey: identityKey(node.createdBy),
-              actorName: identityName(node.createdBy),
-              actorAvatarUrl: node.createdBy?.imageUrl ?? null,
-            },
-          });
-          if (completion.fetchesCommits) {
-            needingCommits.push({
-              pullRequestId: node.pullRequestId,
-              mergeCommitId: node.lastMergeCommit?.commitId ?? null,
-              targetCommitId: node.lastMergeTargetCommit?.commitId ?? null,
-            });
-          }
         }
       }
 

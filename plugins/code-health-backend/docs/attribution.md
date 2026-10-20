@@ -92,13 +92,33 @@ the branch, and those the history already returns.
   exists to remove, and it would fall on whoever pull-merges most often. The
   same-day `git pull` that merges a person's own local commits is unaffected
   either way, since those commits fall in the same window as the merge.
-- **A merge and its pull request on opposite sides of a window boundary.** The
-  two happen within seconds of each other, so it is rare, and a commit no pull
-  request in the same window claims is still dropped when it is a merge commit
-  and still kept under its author when it is not.
+- **An Azure DevOps squash commit read before its pull request closed.** The
+  look-back described under [Windows](#windows) reaches backwards only. A run
+  that falls in the seconds between Azure DevOps writing the squash commit and
+  recording the completion stores the commit with the completer's stamp, and
+  no later window reads it again. A commit no pull request claims is still
+  dropped when it is a merge commit and still kept under its author when it is
+  not; GitHub's squash commits carry the author already.
 - **Azure DevOps commits with no pull request and no parent count** are judged
   by their message. A hand-written subject that starts exactly like git's own
   merge subject would be mistaken for a merge commit; nobody writes one.
+
+## Windows
+
+Ingestion reads history a window at a time, and attribution only sees what one
+window collected. A backfill window is days wide, but the incremental window
+that keeps the dashboard current is the few minutes since the last run — the
+schedule runs every five — so a merge and what follows it routinely fall in
+different windows. A post-merge build finishes minutes after the merge it
+built, by which time the window that read the pull request is over.
+
+So the merged pull requests attribution looks up reach **two days** before the
+window (`PULL_REQUEST_LOOKBACK_MS`). They are only looked up: a pull request,
+its reviews and the commits its merge commit brought in are counted, and asked
+for, once, by the window it closed in. Two days is far more than a build waits
+behind its merge, and it costs a wider pull request query rather than a request
+per pull request. GitHub's search filters by calendar day, so there it is the
+two days before the window's first day.
 
 ## Pipeline runs
 
@@ -106,7 +126,8 @@ A run is credited to the **author of the change it built**, decided in this
 order from the commit the run reports having built (`head_sha` on GitHub,
 `sourceVersion` on Azure DevOps):
 
-1. The author of the **pull request whose merge produced that commit**.
+1. The author of the **pull request whose merge produced that commit**, looked
+   up over the window and the two days before it.
 2. Else the author of **that commit**, as attributed above.
 3. Else whoever the provider says **requested** the run — which for a direct
    push, a scheduled run or a pull request build is the person who pushed, and

@@ -36,6 +36,24 @@ export interface MergedPullRequest {
   readonly author: EventActor;
 }
 
+/**
+ * How far before a window the merged pull requests attribution looks up reach.
+ *
+ * Attribution only sees the facts one window collected, and the incremental
+ * window is the few minutes since the last ingestion run. A post-merge build
+ * finishes minutes after the merge it built, so it routinely lands in the
+ * window after the pull request's; without the earlier pull request in the
+ * lookup it fell through to whoever requested it — the merger. The pull
+ * requests in this margin are only *looked up*: the window they closed in
+ * already counted them, their reviews and the commits they brought in.
+ *
+ * Two days is far more than a build waits behind its merge — a queue backed
+ * up behind a busy agent pool, a stage held for an approval overnight — and
+ * the margin costs a wider pull request query, never a request per pull
+ * request.
+ */
+export const PULL_REQUEST_LOOKBACK_MS = 2 * 24 * 60 * 60 * 1000;
+
 /** A commit as the provider reported it, with the one fact attribution needs. */
 export interface CollectedCommit {
   readonly event: CodeHealthEvent;
@@ -114,6 +132,10 @@ const withActor = (event: CodeHealthEvent, actor: EventActor): CodeHealthEvent =
  * the commit it built, else to the author of that commit as decided above, else
  * to whoever the provider says requested it — which for a direct push or a pull
  * request build is the person who pushed, and so is right anyway.
+ *
+ * `pullRequests` reaches {@link PULL_REQUEST_LOOKBACK_MS} before the window, so
+ * a build or a squash commit read a window after its pull request closed is
+ * still decided by it.
  *
  * Commits are deduplicated by identifier, first occurrence wins: a pull
  * request's own commits are collected alongside the branch history, and the

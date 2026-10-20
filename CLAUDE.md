@@ -544,6 +544,10 @@ The wire contract, and the pure functions both sides have to agree on.
   request produced it or a `git merge` did, because its diff is the sum of the commits it joins; a
   rebase is left alone; a build follows the commit it built. These figures are read as a measure
   of people, so a collector that stores what the provider stamped is a bug, not a simplification.
+  Attribution sees one window's facts and the incremental window is minutes long, so a post-merge
+  build lands a window after its pull request: the merged pull requests it looks up reach two days
+  before the window (`PULL_REQUEST_LOOKBACK_MS`), while the pull request's events, reviews and
+  constituent commits stay with the window it closed in.
 - **The commits a merge commit brought in are fetched from the pull request.** They keep the dates
   they were committed on, so the branch history for the day of the merge never returns them, and
   the day they were committed was fetched before they were on the branch. Dropping the merge
