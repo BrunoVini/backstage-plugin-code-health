@@ -752,6 +752,55 @@ describe("computeProductivityScore", () => {
     expect(componentById(score, "ticketsResolved")?.normalized).toBe(0.5);
   });
 
+  it("should withhold the number for somebody version control never saw", () => {
+    // given
+    // Production, October 2026: a person known only to Confluence, measured on
+    // documentation alone — 8% of the weight — scored 72 and ranked above
+    // most of the engineers, because the unmeasured weight was handed to the
+    // one component left.
+    const onlyConfluence = aContributor({
+      key: "confluence:acct-1",
+      identities: [{ source: "confluence", sourceKey: "acct-1", displayName: "Writer" }],
+      commits: 0,
+      pullRequestsMerged: 0,
+      reviewsGiven: 0,
+      churnUnit: "none",
+      pipelineRunsSucceeded: 0,
+      pipelineRunsFailed: 0,
+      confluenceMetrics: confluence({ pagesCreated: 129 }),
+    });
+    const committer = aContributor({ confluenceMetrics: confluence({ pagesCreated: 10 }) });
+    const reference = fleetReferenceOf([committer, onlyConfluence], 7);
+
+    // when
+    const score = computeProductivityScore(onlyConfluence, reference, CONFLUENCE_ONLY);
+
+    // then
+    expect(score.value).toBeNull();
+    expect(score.evidence).toBeGreaterThan(0);
+    expect(componentById(score, "documentation")?.normalized).not.toBeNull();
+  });
+
+  it("should still score a committer when the fleet left most components unmeasured", () => {
+    // given
+    // Nobody merged, reviewed or ran a pipeline: those components say nothing
+    // about anybody, and must not take the committer's number away with them.
+    const committer = aContributor({
+      pullRequestsMerged: 0,
+      reviewsGiven: 0,
+      pipelineRunsSucceeded: 0,
+      pipelineRunsFailed: 0,
+    });
+    const reference = fleetReferenceOf([committer], 1);
+
+    // when
+    const score = computeProductivityScore(committer, reference, EVERYTHING);
+
+    // then
+    expect(score.evidence).toBeLessThan(0.5);
+    expect(score.value).not.toBeNull();
+  });
+
   it("should score only the integrations that are configured, never the ones a row carries", () => {
     // given
     // The row holds all three measures. Whether they count is a question about

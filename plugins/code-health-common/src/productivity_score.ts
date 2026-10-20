@@ -825,15 +825,27 @@ export const productivityComponentsFor = (
  * so a caller holding the fleet's rows and the backend's configuration scores
  * every row without deciding anything itself — which is what keeps the table
  * in the browser and the trend on the backend folding the same number.
+ *
+ * Somebody version control never saw gets their components but no number.
+ * `combineScore` hands an unmeasured component's weight to the ones that were
+ * measured, which is right for a gate nobody ran and wrong for a person whose
+ * whole output side is missing: somebody known only to Confluence was scored
+ * on documentation alone — 8% of the weight — and ranked above most of the
+ * engineers on it. The rule is about the person, not about how much weight
+ * survived, because a component the whole fleet left unmeasured — no pull
+ * request merged anywhere on a quiet day — says nothing about anybody and must
+ * not take a committer's score away with it.
  */
 export const computeProductivityScore = (
   summary: ContributorSummary,
   reference: FleetReference,
   capabilities: IntegrationCapabilities = NO_INTEGRATIONS,
   weights: ProductivityWeightsByRole = DEFAULT_PRODUCTIVITY_WEIGHTS,
-): ProductivityScore =>
-  combineScore(
+): ProductivityScore => {
+  const score = combineScore(
     productivityComponentsFor(capabilities, weights[summary.role]).map((definition) =>
       READINGS[definition.id].read(definition, summary, reference),
     ),
   );
+  return measuredByVersionControl(summary) ? score : { ...score, value: null };
+};

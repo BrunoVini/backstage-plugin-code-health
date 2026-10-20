@@ -292,7 +292,13 @@ The wire contract, and the pure functions both sides have to agree on.
   a measured zero, a quiet window, while a person version control never saw is left out of the
   version-control means and scored unmeasured on commits, pull requests, churn, reviews and the
   pipeline, with "no version-control account is linked to this person" as the reason. The trend's
-  zero rows copy the window row's identities, so the rule holds per bucket.
+  zero rows copy the window row's identities, so the rule holds per bucket. Such a person gets
+  their components but **no number**: `computeProductivityScore` withholds the value, because
+  `combineScore` would otherwise hand the whole version-control weight to whatever else was measured
+  — in production a Confluence-only account scored 72 on documentation alone, 8% of the weight, and
+  ranked above most engineers. The rule is about the person rather than an evidence floor: a floor
+  also blanked a committer's quiet trend buckets, where pull requests and reviews were unmeasured
+  for the whole fleet and say nothing about anybody.
 - **A day is recorded as fetched only when a window covers it end to end**, so "no activity" and
   "not fetched yet" stay distinguishable and the range picker never offers a period it can only
   answer partially.

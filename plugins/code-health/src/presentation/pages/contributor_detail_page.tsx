@@ -19,6 +19,7 @@ import {
   enabledIntegrations,
   formatDecimal,
   formatPercent,
+  measuredByVersionControl,
 } from "@rios0rios0/backstage-plugin-code-health-common";
 import { useMemo } from "react";
 import { claudeTokenSeries } from "../../domain/entities/claude_insights";
@@ -448,7 +449,11 @@ export const ContributorDetailPage = ({
                   : `${PRODUCTIVITY_SUBHEADER} ${INTEGRATION_SUBHEADER}`
               }
               score={response.score}
-              emptyMessage="Nothing measurable was recorded under this key in the selected range, so there is no score to show."
+              emptyMessage={
+                summary !== null && !measuredByVersionControl(summary)
+                  ? "No version-control account is linked to this person, so no score is shown: it would rest on whatever else happens to be measured, and rank somebody who writes no code against the people who do. The components below are still read."
+                  : "Nothing measurable was recorded under this key in the selected range, so there is no score to show."
+              }
             />
           </Grid>
 

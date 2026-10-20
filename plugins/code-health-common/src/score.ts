@@ -27,7 +27,11 @@ export interface ScoreComponent {
 }
 
 export interface Score {
-  /** `0..100`, rounded to a whole number, or null when nothing could be measured. */
+  /**
+   * `0..100`, rounded to a whole number, or null when nothing could be
+   * measured — or, for a productivity score, when version control never saw
+   * the person.
+   */
   readonly value: number | null;
   /**
    * The summed weight of the components that could be measured, in `0..1`.
