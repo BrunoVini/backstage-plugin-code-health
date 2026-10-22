@@ -1,4 +1,4 @@
-import { RequestBudget } from "../../../../src/domain/entities/request_budget";
+import { BudgetExhaustedError, RequestBudget } from "../../../../src/domain/entities/request_budget";
 import { ProviderGateway } from "../../../../src/infrastructure/http/provider_gateway";
 import { AzureDevOpsCollector } from "../../../../src/infrastructure/services/collectors/azure_devops_collector";
 import { anAzureRepository } from "../../../builders/tracked_repository_builder";
@@ -763,6 +763,150 @@ describe("AzureDevOpsCollector", () => {
 
       // then
       expect(result.events.find((event) => event.kind === "commit")?.actorKey).toBe("merger@example.com");
+    });
+
+    describe("a squash commit whose pull request closed in another window", () => {
+      const isPullRequestLookup = (request: RecordedRequest) => /\/pullrequests\/\d+$/.test(request.path);
+
+      const lookups = () => server.requests.filter(isPullRequestLookup).map((request) => request.path.split("/").pop());
+
+      /** Answers `GET …/pullrequests/{id}`; register it before `withClosed`. */
+      const onPullRequest = (id: number, reply: { status?: number; body?: unknown }) =>
+        server.route((request) => (request.path.endsWith(`/pullrequests/${id}`) ? reply : undefined));
+
+      const squashedLongAgo = (id: number, commitId: string) => ({
+        body: completed({
+          pullRequestId: id,
+          closedDate: "2026-08-01T12:00:00Z",
+          lastMergeCommit: { commitId },
+          completionOptions: { mergeStrategy: "squash" },
+        }),
+      });
+
+      const stamped = (commitId: string, id: number, date = "2026-08-09T15:00:00Z") => ({
+        commitId,
+        comment: `Merged PR ${id}: add the thing`,
+        author: { name: "Merger", email: "merger@example.com", date },
+        changeCounts: { Edit: 30 },
+      });
+
+      it("should credit what a release merge brought in to the author of the pull request each squash came from", async () => {
+        // given
+        // develop → main completed with a merge commit lands develop's squash
+        // commits, each stamped with whoever completed it days ago, and the
+        // pull request that produced each one is in no list this window reads.
+        onPullRequest(50, squashedLongAgo(50, "squash-50"));
+        onComparison(() => ({
+          body: {
+            value: [stamped("release-merge", 60), stamped("squash-50", 50, "2026-08-01T12:00:00Z")],
+          },
+        }));
+        withClosed(completed({ pullRequestId: 60, lastMergeCommit: { commitId: "release-merge" } }), []);
+
+        // when
+        const result = await collect();
+
+        // then
+        const commits = result.events.filter((event) => event.kind === "commit");
+        expect(commits.map((event) => event.externalId)).toEqual(["squash-50"]);
+        expect(commits[0]).toMatchObject({ actorKey: "author@example.com", actorName: "Author", changedFiles: 30 });
+        expect(commits[0].payload).toMatchObject({ pullRequestId: "50" });
+        // Its pull request and its reviews were the window it closed in's to emit.
+        expect(
+          result.events.filter((event) => event.kind !== "commit").map((event) => event.payload?.pullRequestId),
+        ).toEqual([60]);
+        expect(comparisonRequests()).toHaveLength(1);
+        expect(lookups()).toEqual(["50"]);
+      });
+
+      it("should credit a squash commit on the branch whose pull request closed after the window", async () => {
+        // given
+        onPullRequest(77, squashedLongAgo(77, "squash-77"));
+        withClosedPullRequests([], [stamped("squash-77", 77), stamped("squash-77", 77)]);
+
+        // when
+        const result = await collect();
+
+        // then
+        expect(result.events.find((event) => event.kind === "commit")).toMatchObject({
+          externalId: "squash-77",
+          actorKey: "author@example.com",
+          payload: expect.objectContaining({ pullRequestId: "77" }),
+        });
+        expect(lookups()).toEqual(["77"]);
+      });
+
+      it("should keep the stamp when the pull request cannot be read or did not produce the commit", async () => {
+        // given
+        onPullRequest(77, { status: 404, body: { message: "not found" } });
+        // A cherry-pick carries the subject of a pull request that landed elsewhere.
+        onPullRequest(78, squashedLongAgo(78, "somewhere-else"));
+        withClosedPullRequests([], [stamped("squash-77", 77), stamped("cherry-pick", 78)]);
+        const { collector, logger } = createCollector();
+
+        // when
+        const result = await collector.collect(anAzureRepository(server.baseUrl), WINDOW, {
+          budget: new RequestBudget(50),
+        });
+
+        // then
+        const commits = result.events.filter((event) => event.kind === "commit");
+        expect(commits.map((event) => [event.externalId, event.actorKey])).toEqual([
+          ["squash-77", "merger@example.com"],
+          ["cherry-pick", "merger@example.com"],
+        ]);
+        expect(logger.at("warn")).toEqual([expect.stringContaining("pull request 77")]);
+      });
+
+      it("should fail the window rather than store the stamp when the allowance runs out on the lookup", async () => {
+        // given
+        onPullRequest(77, squashedLongAgo(77, "squash-77"));
+        withClosedPullRequests([], [stamped("squash-77", 77)]);
+        const { collector } = createCollector();
+
+        // when
+        const collecting = collector.collect(anAzureRepository(server.baseUrl), WINDOW, {
+          // The repository lookup, the branch history, the two pull request
+          // lists and the builds, and nothing left for the lookup.
+          budget: new RequestBudget(5),
+        });
+
+        // then
+        await expect(collecting).rejects.toBeInstanceOf(BudgetExhaustedError);
+      });
+
+      it("should fail the window rather than store the stamp when the run is aborted during the lookup", async () => {
+        // given
+        const controller = new AbortController();
+        server.route((request) => {
+          if (!request.path.endsWith("/pullrequests/77")) return undefined;
+          controller.abort();
+          return { status: 404 };
+        });
+        withClosedPullRequests([], [stamped("squash-77", 77)]);
+        const { collector } = createCollector();
+
+        // when
+        const collecting = collector.collect(anAzureRepository(server.baseUrl), WINDOW, {
+          budget: new RequestBudget(50),
+          signal: controller.signal,
+        });
+
+        // then
+        await expect(collecting).rejects.toThrow();
+      });
+
+      it("should not look a pull request up when one in the window already claims the commit", async () => {
+        // given
+        withClosed(completed({ completionOptions: { mergeStrategy: "squash" } }), [stamped("landed", 42)]);
+
+        // when
+        const result = await collect();
+
+        // then
+        expect(result.events.find((event) => event.kind === "commit")?.actorKey).toBe("author@example.com");
+        expect(lookups()).toEqual([]);
+      });
     });
 
     it("should credit a build to the creator of the pull request whose completion it built", async () => {

@@ -5,6 +5,7 @@ import type {
   CodeHealthEvent,
   EventOutcome,
 } from "../../../domain/entities/code_health_event";
+import { BudgetExhaustedError } from "../../../domain/entities/request_budget";
 import {
   attributeMergedWork,
   isGitMergeMessage,
@@ -24,7 +25,7 @@ import type {
   SnapshotContext,
   VcsCollector,
 } from "../../../domain/services/vcs_collector";
-import type { ProviderGateway } from "../../http/provider_gateway";
+import { CircuitOpenError, type ProviderGateway } from "../../http/provider_gateway";
 import { evaluatePolicies, pickLatestTag } from "./azure_devops_snapshot";
 import { buildCompliance } from "./compliance";
 import { detectRepositoryFiles, SCANNED_DIRECTORIES } from "./repository_files";
@@ -152,6 +153,31 @@ const completionOf = (
   return { strategy, fetchesCommits: strategy === "merge_commit" };
 };
 
+/** A completed pull request, as attribution needs to know it. */
+const mergedPullRequestOf = (node: AdoPullRequestNode): MergedPullRequest => ({
+  externalId: String(node.pullRequestId),
+  mergeCommitId: node.lastMergeCommit?.commitId ?? null,
+  strategy: completionOf(node).strategy,
+  author: {
+    actorKey: identityKey(node.createdBy),
+    actorName: identityName(node.createdBy),
+    actorAvatarUrl: node.createdBy?.imageUrl ?? null,
+  },
+});
+
+/**
+ * The pull request an Azure DevOps completion subject names, `Merged PR 123: …`.
+ *
+ * A lead, not evidence: the same subject is written on a squash commit and on
+ * a merge commit, and travels with a cherry-pick. Only the pull request itself,
+ * naming the commit as its `lastMergeCommit`, decides.
+ */
+const mergedPullRequestNumberOf = (commit: CollectedCommit): number | null => {
+  const headline = commit.event.payload?.messageHeadline;
+  const match = typeof headline === "string" ? /^Merged PR (\d+):/u.exec(headline) : null;
+  return match === null ? null : Number(match[1]);
+};
+
 /**
  * Repository-relative path of an item.
  *
@@ -195,7 +221,8 @@ export interface AzureDevOpsCollectorOptions {
  * number of requests regardless of how much history exists — four plus
  * pagination, against the five *per repository per dashboard load* the browser
  * used to issue — plus one per pull request completed with a merge commit,
- * whose commits the branch history never returns. The organisation-wide
+ * whose commits the branch history never returns, and one per pull request a
+ * squash commit names that closed outside the window. The organisation-wide
  * project and repository enumeration is gone entirely: the catalog already
  * knows which repositories exist.
  *
@@ -234,10 +261,20 @@ export class AzureDevOpsCollector implements VcsCollector {
       context,
     );
 
+    const collected = [...commits, ...constituents];
+    const earlier = await this.collectEarlierPullRequests(
+      repository,
+      repositoryId,
+      collected,
+      closed.merged,
+      headers,
+      context,
+    );
+
     const attributed = attributeMergedWork({
-      commits: [...commits, ...constituents],
+      commits: collected,
       builds,
-      pullRequests: closed.merged,
+      pullRequests: [...closed.merged, ...earlier],
     });
 
     return {
@@ -693,18 +730,8 @@ export class AzureDevOpsCollector implements VcsCollector {
         }
 
         if (range === "closed" && outcome === "merged") {
-          const completion = completionOf(node);
-          merged.push({
-            externalId: String(node.pullRequestId),
-            mergeCommitId: node.lastMergeCommit?.commitId ?? null,
-            strategy: completion.strategy,
-            author: {
-              actorKey: identityKey(node.createdBy),
-              actorName: identityName(node.createdBy),
-              actorAvatarUrl: node.createdBy?.imageUrl ?? null,
-            },
-          });
-          if (completion.fetchesCommits) {
+          merged.push(mergedPullRequestOf(node));
+          if (completionOf(node).fetchesCommits) {
             needingCommits.push({
               pullRequestId: node.pullRequestId,
               mergeCommitId: node.lastMergeCommit?.commitId ?? null,
@@ -718,6 +745,69 @@ export class AzureDevOpsCollector implements VcsCollector {
     }
 
     return { events, merged, needingCommits };
+  }
+
+  /**
+   * The pull requests behind the squash commits no pull request in the window
+   * claims.
+   *
+   * A window is minutes long, so the pull request that produced a squash commit
+   * is often not among the ones it closed: a release merge from develop lands
+   * develop's squash commits, whose pull requests closed days earlier, and a
+   * squash commit can be read in the run before its pull request's close is.
+   * Unclaimed, each stays on whoever pressed *Complete*, with the whole pull
+   * request's changed files — and the upsert overwrites a commit an earlier
+   * window had already credited correctly. Each is looked up by the number in
+   * its subject, and counts only when it names the commit as its merge commit.
+   *
+   * These pull requests take part in attribution alone: their own events and
+   * constituents belonged to the window they closed in. The cost is one
+   * request per distinct unclaimed pull request number per window, which is
+   * none for a window that only reads its own squashes. One that cannot be read
+   * leaves the commit as stamped rather than failing the window; a run that is
+   * over still fails it, so it is retried instead of storing the stamp.
+   */
+  private async collectEarlierPullRequests(
+    repository: TrackedRepository,
+    repositoryId: string,
+    commits: readonly CollectedCommit[],
+    claimed: readonly MergedPullRequest[],
+    headers: Record<string, string>,
+    context: CollectorContext,
+  ): Promise<MergedPullRequest[]> {
+    const claimedCommits = new Set(claimed.map((pullRequest) => pullRequest.mergeCommitId));
+    const leads = new Map<number, Set<string>>();
+    for (const commit of commits) {
+      const pullRequestId = mergedPullRequestNumberOf(commit);
+      if (pullRequestId === null || claimedCommits.has(commit.event.externalId)) continue;
+      leads.set(pullRequestId, (leads.get(pullRequestId) ?? new Set()).add(commit.event.externalId));
+    }
+
+    const found = await Promise.all(
+      [...leads].map(async ([pullRequestId, commitIds]) => {
+        const url =
+          `${this.projectUrl(repository)}/_apis/git/repositories/${encodeURIComponent(repositoryId)}` +
+          `/pullrequests/${pullRequestId}?api-version=${API_VERSION}`;
+        try {
+          const node = await this.getJson<AdoPullRequestNode>(url, headers, context);
+          const pullRequest = mergedPullRequestOf(node);
+          const produced =
+            node.status === "completed" && commitIds.has(pullRequest.mergeCommitId ?? "");
+          return produced ? [pullRequest] : [];
+        } catch (error) {
+          if (error instanceof BudgetExhaustedError || error instanceof CircuitOpenError) throw error;
+          if (context.signal?.aborted === true) throw error;
+          this.options.logger.warn(
+            `could not read pull request ${pullRequestId} in ${repository.entityRef}; ` +
+              `its squash commit keeps the completer's stamp: ${String(error)}`,
+            { entityRef: repository.entityRef, pullRequestId },
+          );
+          return [];
+        }
+      }),
+    );
+
+    return found.flat();
   }
 
   /**

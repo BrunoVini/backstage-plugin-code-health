@@ -554,7 +554,12 @@ The wire contract, and the pure functions both sides have to agree on.
   is recognised as a merge commit by its message — only the forms git writes itself. Its own
   `Merged PR 123:` subject is written on squash commits too and proves nothing; the pull request's
   `completionOptions` decides, with no options meaning the plain merge Azure DevOps performs by
-  default, and an unrecognised strategy keeping the stamp rather than guessing.
+  default, and an unrecognised strategy keeping the stamp rather than guessing. The subject is
+  still a *lead*: a window is minutes long, so a squash commit landed by a release merge from
+  `develop`, or read before its pull request's close, is claimed by no pull request in the window.
+  `collectEarlierPullRequests` looks pull request 123 up — one request per distinct unclaimed
+  number per window — and it decides only when its `lastMergeCommit` is that commit; its own events
+  and commits are not collected again, and one that fails to load leaves the stamp.
 - **A review is a vote on somebody else's pull request.** The author's own vote is not one, and an
   Azure DevOps reviewer who was added and never voted did not review anything.
 - **The pipeline success rate divides by the runs that reached a verdict.** A run cancelled because

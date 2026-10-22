@@ -1,0 +1,3 @@
+kind: 'Fixed'
+body: 'Credited the Azure DevOps squash commits no pull request in their ingestion window claimed — the ones a release merge from develop brought in, and one read before its pull request''s close — to the pull request''s author rather than to whoever completed it, by looking the pull request up from the `Merged PR N:` subject.'
+time: '2026-10-20T18:27:50.010258835Z'

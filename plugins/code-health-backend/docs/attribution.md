@@ -45,6 +45,23 @@ alike, so on its own it proves nothing; the pull request that produced the
 commit decides. A completion strategy this plugin does not recognise keeps
 whatever the provider stamped, because guessing either way could lose work.
 
+The subject is still used as a **lead**. An ingestion window is minutes long,
+so the pull request that produced a commit is often not among the ones the
+window closed: a release pull request from `develop` completed with a merge
+commit lands `develop`'s squash commits, whose pull requests closed days
+earlier, and a squash commit can be read in the run before its pull request's
+close is. Left alone, each would stay on whoever pressed *Complete*, carrying
+the whole pull request's changed files — and, being stored by identifier, would
+overwrite the correct credit an earlier window had given it. So a commit whose
+subject starts `Merged PR N:` and that no pull request in the window names as
+its merge commit has pull request `N` looked up, and it counts only when that
+pull request is completed and its `lastMergeCommit` is the commit. It then
+decides the commit exactly as above; its own events and commits are not
+collected again, because they belonged to the window it closed in. That is one
+request per distinct pull request number per window, and none on a window that
+only reads its own squashes. A pull request that cannot be read leaves the
+commit as stamped rather than failing the window.
+
 ### Why the pull request's commits have to be fetched
 
 Ingestion reads the default branch's history a window at a time and records a
@@ -93,9 +110,11 @@ the branch, and those the history already returns.
   same-day `git pull` that merges a person's own local commits is unaffected
   either way, since those commits fall in the same window as the merge.
 - **A merge and its pull request on opposite sides of a window boundary.** The
-  two happen within seconds of each other, so it is rare, and a commit no pull
-  request in the same window claims is still dropped when it is a merge commit
-  and still kept under its author when it is not.
+  two happen within seconds of each other, so it is rare. On Azure DevOps the
+  commit's `Merged PR N:` subject finds the pull request anyway, as described
+  above; a commit without one that no pull request in the same window claims is
+  still dropped when it is a merge commit and still kept under its author when
+  it is not.
 - **Azure DevOps commits with no pull request and no parent count** are judged
   by their message. A hand-written subject that starts exactly like git's own
   merge subject would be mistaken for a merge commit; nobody writes one.
