@@ -235,7 +235,7 @@ describe("GithubCollector", () => {
       expect(result.events[0].actorKey).toBe("dev@example.com");
     });
 
-    it("should ask for the exact window rather than a calendar day", async () => {
+    it("should ask from a day before the window rather than from a calendar day", async () => {
       // given
       withEmptyDefaults();
 
@@ -249,7 +249,7 @@ describe("GithubCollector", () => {
       expect(graphqlVariables(history!.body)).toMatchObject({
         owner: "rios0rios0",
         name: "pipelines",
-        since: WINDOW.from.toISOString(),
+        since: "2026-08-08T00:00:00.000Z",
         until: WINDOW.to.toISOString(),
       });
     });

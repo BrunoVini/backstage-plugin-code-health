@@ -133,8 +133,10 @@ describe("AzureDevOpsCollector", () => {
       expect(commit?.changedFiles).toBe(5);
     });
 
-    it("should ask for the window and the default branch", async () => {
+    it("should ask from a day before the window, and for the default branch", async () => {
       // given
+      // The list filters on the committer date, and a commit reaches the
+      // branch when it is pushed, which can be well after it was committed.
       withEmptyDefaults();
 
       // when
@@ -142,10 +144,42 @@ describe("AzureDevOpsCollector", () => {
 
       // then
       const [request] = server.requestsFor("/commits");
-      expect(request.query.get("searchCriteria.fromDate")).toBe(WINDOW.from.toISOString());
+      expect(request.query.get("searchCriteria.fromDate")).toBe("2026-08-08T00:00:00.000Z");
       expect(request.query.get("searchCriteria.toDate")).toBe(WINDOW.to.toISOString());
       expect(request.query.get("searchCriteria.itemVersion.version")).toBe("main");
       expect(request.query.get("api-version")).toBe("7.1");
+    });
+
+    it("should store a commit pushed after the window its date falls in", async () => {
+      // given
+      // Committed in the evening, pushed after the window covering the evening
+      // had been read: only the look-back ever returns it.
+      server.route((request) =>
+        request.path.endsWith("/commits")
+          ? {
+              body: {
+                value: [
+                  {
+                    commitId: "late",
+                    author: { email: "alice@example.com", date: "2026-08-08T20:00:00Z" },
+                    committer: { email: "alice@example.com", date: "2026-08-08T20:00:00Z" },
+                  },
+                ],
+              },
+            }
+          : undefined,
+      );
+      withEmptyDefaults();
+
+      // when
+      const result = await collect();
+
+      // then
+      expect(result.events.find((event) => event.kind === "commit")).toMatchObject({
+        externalId: "late",
+        actorKey: "alice@example.com",
+        occurredAt: new Date("2026-08-08T20:00:00Z"),
+      });
     });
 
     it("should recognise a merge commit by its message when no parents are reported", async () => {
@@ -589,27 +623,50 @@ describe("AzureDevOpsCollector", () => {
       expect(comparisonRequests()[0].query.get("searchCriteria.$top")).toBe("200");
     });
 
-    it("should leave a rebase completion's commits as the provider reported them", async () => {
+    it("should fetch what a rebase completion landed and keep it under its authors", async () => {
       // given
-      // A rebase rewrites the pull request's commits onto the target with their
-      // authors intact, and they are dated at the completion, so the branch
-      // history already has them under the right people.
-      withClosed(completed({ completionOptions: { mergeStrategy: "rebase" } }), [
-        {
-          commitId: "landed",
-          comment: "added the thing",
-          author: { email: "author@example.com", date: "2026-08-09T15:00:00Z" },
+      // A branch already up to date with the target is fast-forwarded, not
+      // rewritten, so its commits keep the dates they were committed on and
+      // the branch history for the day of the completion never returns them.
+      onComparison(() => ({
+        body: {
+          value: [
+            {
+              commitId: "landed",
+              comment: "added the other thing",
+              author: { name: "Bob", email: "bob@example.com", date: "2026-08-07T11:00:00Z" },
+              changeCounts: { Edit: 3 },
+            },
+            {
+              commitId: "work-1",
+              comment: "added the thing",
+              author: { name: "Author", email: "author@example.com", date: "2026-08-06T10:00:00Z" },
+              changeCounts: { Edit: 4 },
+            },
+          ],
         },
-      ]);
+      }));
+      withClosed(completed({ completionOptions: { mergeStrategy: "rebase" } }), []);
 
       // when
       const result = await collect();
 
       // then
-      const commit = result.events.find((event) => event.kind === "commit");
-      expect(commit?.actorKey).toBe("author@example.com");
-      expect(commit?.payload).not.toHaveProperty("pullRequestId");
-      expect(comparisonRequests()).toEqual([]);
+      const commits = result.events.filter((event) => event.kind === "commit");
+      expect(commits).toEqual([
+        expect.objectContaining({
+          externalId: "landed",
+          actorKey: "bob@example.com",
+          occurredAt: new Date("2026-08-07T11:00:00Z"),
+        }),
+        expect.objectContaining({
+          externalId: "work-1",
+          actorKey: "author@example.com",
+          occurredAt: new Date("2026-08-06T10:00:00Z"),
+        }),
+      ]);
+      expect(commits[0].payload).not.toHaveProperty("pullRequestId");
+      expect(comparisonRequests()).toHaveLength(1);
     });
 
     it("should store a rebase-and-merge's landed commits once, though the branch history returns them too", async () => {
@@ -674,7 +731,7 @@ describe("AzureDevOpsCollector", () => {
       });
     });
 
-    it("should make one request per pull request completed with a merge commit, and none for a squash or a rebase", async () => {
+    it("should make one request per pull request completed with a merge commit or a rebase, and none for a squash", async () => {
       // given
       onComparison(() => ({ body: { value: [] } }));
       withClosedPullRequests(
@@ -712,12 +769,13 @@ describe("AzureDevOpsCollector", () => {
         "m-41",
         "m-42",
         "m-43",
+        "m-45",
       ]);
       expect(server.requests.filter((request) => /\/pullrequests\/\d+\/commits$/.test(request.path))).toEqual([]);
       expect(server.requests.filter((request) => request.path.endsWith("/commitsbatch"))).toEqual([]);
       // The repository lookup, the branch history, the two pull request lists,
-      // the builds, and the three comparisons.
-      expect(server.requests).toHaveLength(8);
+      // the builds, and the four comparisons.
+      expect(server.requests).toHaveLength(9);
     });
 
     it("should skip a pull request missing its merge or target commit, and say so", async () => {
@@ -914,6 +972,31 @@ describe("AzureDevOpsCollector", () => {
       expect(result.events.filter((event) => event.kind === "pull_request")).toEqual([]);
       expect(result.events.filter((event) => event.kind === "pr_review")).toEqual([]);
       expect(comparisonRequests()).toEqual([]);
+    });
+
+    it("should keep a squash commit read again by the look-back under the pull request's creator", async () => {
+      // given
+      // Every commit the look-back returns is stored again over the one already
+      // there, so a squash commit has to meet its pull request again too, or
+      // the second read would put the completer's stamp back on it.
+      withClosed(
+        completed({ closedDate: "2026-08-08T12:00:05Z", completionOptions: { mergeStrategy: "squash" } }),
+        [
+          {
+            commitId: "landed",
+            comment: "Merged PR 42: add the thing",
+            author: { email: "merger@example.com", date: "2026-08-08T12:00:00Z" },
+          },
+        ],
+      );
+
+      // when
+      const result = await collect();
+
+      // then
+      expect(result.events).toEqual([
+        expect.objectContaining({ kind: "commit", externalId: "landed", actorKey: "author@example.com" }),
+      ]);
     });
 
     it("should not count a reviewer who never voted", async () => {

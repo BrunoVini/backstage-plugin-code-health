@@ -23,7 +23,7 @@ Three kinds of commit are treated differently, and all three are commits a
 | The merge was a… | What lands on the branch | What is stored |
 |---|---|---|
 | **Squash** | One new commit carrying the whole pull request, stamped with whoever the provider chose | Credited to the **pull request's author**. On Azure DevOps the stamp is whoever pressed *Complete*; on GitHub it is already the author, and the rule is a no-op |
-| **Rebase** | The pull request's commits rewritten onto the branch, each with its own author | Kept as they are: git preserved the authors, and the rewrite gave them new committer dates at the merge, which is what the branch history returns them by, so they land under the right people |
+| **Rebase** | The pull request's commits rebased onto the branch, each with its own author | Kept as they are: git preserved the authors, so they land under the right people. On Azure DevOps they are also asked for, see below |
 | **Merge commit** | The pull request's commits as they were, plus one commit with two parents joining them | The merge commit is **not counted at all**, and the pull request's own commits are |
 
 A merge commit carries no work of its own. Its diff against the first parent is
@@ -66,12 +66,21 @@ into (`lastMergeTargetCommit`) and the merge commit (`lastMergeCommit`), which
 returns exactly what the completion put on the branch, change counts included,
 whatever the commits are dated. For a rebase-and-merge those are the rewritten
 commits, the same ones the branch history reports, so the two never store a
-commit twice. Both walk a pull request's commits to the end: the ones past the
+commit twice.
+
+Azure DevOps asks the same of a plain **rebase**. Its rebase is a rebase and a
+fast-forward, and a branch already up to date with the target — which a policy
+demanding an up-to-date branch makes everyone's — has nothing to rewrite, so
+its commits are fast-forwarded on with the dates they already had and the
+history for the day of the completion never returns them. There is no merge
+commit to drop: `lastMergeCommit` is the last of the pull request's own
+commits, so the same list returns exactly those, and each keeps its author. Both walk a pull request's commits to the end: the ones past the
 first page were committed on days already fetched, and nothing else will ever
 return them.
 
-A squash or a rebase needs none of this: both put commits dated at the merge on
-the branch, and those the history already returns.
+A squash needs none of this: it puts one commit dated at the merge on the
+branch, and that the history already returns. Neither does a GitHub rebase,
+which always rewrites the commits with committer dates at the merge.
 
 ### What this cannot do
 
@@ -92,13 +101,6 @@ the branch, and those the history already returns.
   exists to remove, and it would fall on whoever pull-merges most often. The
   same-day `git pull` that merges a person's own local commits is unaffected
   either way, since those commits fall in the same window as the merge.
-- **An Azure DevOps squash commit read before its pull request closed.** The
-  look-back described under [Windows](#windows) reaches backwards only. A run
-  that falls in the seconds between Azure DevOps writing the squash commit and
-  recording the completion stores the commit with the completer's stamp, and
-  no later window reads it again. A commit no pull request claims is still
-  dropped when it is a merge commit and still kept under its author when it is
-  not; GitHub's squash commits carry the author already.
 - **Azure DevOps commits with no pull request and no parent count** are judged
   by their message. A hand-written subject that starts exactly like git's own
   merge subject would be mistaken for a merge commit; nobody writes one.
@@ -119,6 +121,19 @@ for, once, by the window it closed in. Two days is far more than a build waits
 behind its merge, and it costs a wider pull request query rather than a request
 per pull request. GitHub's search filters by calendar day, so there it is the
 two days before the window's first day.
+
+The branch history is read from **one day** before the window
+(`COMMIT_LOOKBACK_MS`). Both providers filter it on the committer date, and a
+commit reaches the branch when it is pushed, which can be hours after it was
+committed; a minutes-long window had long been read by then, and nothing read
+that date again. Reading it again is harmless, because the store keeps one
+event per identifier and a second read replaces the first. It also heals an
+Azure DevOps squash commit read in the seconds before its completion was
+recorded: the next window reads it again, with its pull request in the lookup.
+That is why the commit look-back has to stay shorter than the pull request
+one — a squash is written at the completion, so every squash commit read again
+still meets its pull request, and a second read never puts the completer's
+stamp back.
 
 ## Pipeline runs
 

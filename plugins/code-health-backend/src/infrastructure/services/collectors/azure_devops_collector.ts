@@ -7,6 +7,7 @@ import type {
 } from "../../../domain/entities/code_health_event";
 import {
   attributeMergedWork,
+  COMMIT_LOOKBACK_MS,
   isGitMergeMessage,
   PULL_REQUEST_LOOKBACK_MS,
   type CollectedBuild,
@@ -92,8 +93,8 @@ const PULL_REQUEST_OUTCOMES: ReadonlyMap<string, EventOutcome> = new Map([
  *
  * `rebase` rewrites the pull request's commits onto the target with their
  * authors intact and leaves nothing to re-attribute; `rebaseMerge` adds a merge
- * commit on top of them, which is dropped like any other merge commit, so what
- * it landed is read back off the pull request instead, see `completionOf`.
+ * commit on top of them, which is dropped like any other merge commit. What
+ * either landed is read back off the pull request as well, see `completionOf`.
  */
 const MERGE_STRATEGIES: ReadonlyMap<string, MergeStrategy> = new Map([
   ["squash", "squash"],
@@ -133,10 +134,16 @@ const identityName = (identity: AdoIdentityNode | undefined): string | null =>
  * commits with the dates they already had. That is why this follows the
  * strategy attribution ends up with rather than the name the provider used —
  * whatever is dropped as a merge commit has to be asked for, or the work it
- * carried is lost. A squash writes one new commit on the branch and a rebase
- * rewrites the commits onto it with new committer dates at the completion —
- * the date both the provider's filter and this collector go by — so neither
- * needs asking.
+ * carried is lost.
+ *
+ * A rebase hides them the same way while dropping nothing. It is a rebase and
+ * a fast-forward, and a branch already up to date with the target leaves
+ * nothing to rewrite, so the commits are fast-forwarded on with the dates
+ * they already had. Its commits are asked for as well and keep their authors —
+ * the strategy stays `linear`; when the rebase did rewrite them, they are the
+ * same identifiers the branch history returns and meet those by identifier.
+ * Only a squash, which writes one new commit at the completion, needs no
+ * asking.
  *
  * With no completion options at all the completion was a plain merge, which is
  * what Azure DevOps does when nothing says otherwise; `squashMerge` is the
@@ -150,7 +157,7 @@ const completionOf = (
   const raw =
     options?.mergeStrategy ?? (options?.squashMerge === true ? "squash" : "noFastForward");
   const strategy = MERGE_STRATEGIES.get(raw) ?? "linear";
-  return { strategy, fetchesCommits: strategy === "merge_commit" };
+  return { strategy, fetchesCommits: strategy === "merge_commit" || raw === "rebase" };
 };
 
 /**
@@ -168,7 +175,7 @@ const isoOrNull = (value: string | undefined): Date | null => {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
 
-/** A pull request completed with a merge commit, whose commits have to be asked for. */
+/** A pull request completed with a merge commit or a rebase, whose commits are asked for. */
 interface PullRequestNeedingCommits {
   readonly pullRequestId: number;
   /** The merge commit the completion wrote, `lastMergeCommit`. */
@@ -195,10 +202,10 @@ export interface AzureDevOpsCollectorOptions {
  * Every endpoint used here accepts a date range, so one window costs a fixed
  * number of requests regardless of how much history exists — four plus
  * pagination, against the five *per repository per dashboard load* the browser
- * used to issue — plus one per pull request completed with a merge commit,
- * whose commits the branch history never returns. The organisation-wide
- * project and repository enumeration is gone entirely: the catalog already
- * knows which repositories exist.
+ * used to issue — plus one per pull request completed with a merge commit or
+ * a rebase, whose commits the branch history may never return. The
+ * organisation-wide project and repository enumeration is gone entirely: the
+ * catalog already knows which repositories exist.
  *
  * What the provider reports is not what is stored: merged work is credited to
  * whoever did it rather than to whoever completed the pull request, see
@@ -565,7 +572,8 @@ export class AzureDevOpsCollector implements VcsCollector {
   ): Promise<CollectedCommit[]> {
     const branch = defaultBranch ?? repository.defaultBranch;
     const criteria: Record<string, string> = {
-      "searchCriteria.fromDate": window.from.toISOString(),
+      // A day early, for commits pushed after their date; see `COMMIT_LOOKBACK_MS`.
+      "searchCriteria.fromDate": new Date(window.from.getTime() - COMMIT_LOOKBACK_MS).toISOString(),
       "searchCriteria.toDate": window.to.toISOString(),
       ...(branch ? { "searchCriteria.itemVersion.version": branch } : {}),
     };
@@ -730,7 +738,7 @@ export class AzureDevOpsCollector implements VcsCollector {
   }
 
   /**
-   * The commits the pull requests completed with a merge commit brought in.
+   * The commits the pull requests completed with a merge commit or a rebase brought in.
    *
    * They keep the dates they were committed on, so they are stored where they
    * happened. See `landedCommits` for how they are found.
@@ -762,7 +770,9 @@ export class AzureDevOpsCollector implements VcsCollector {
    * the merge commit. The reverse orientation returns nothing. This list
    * reports no parents, so the merge commit is recognised by its identifier,
    * the pull request's `lastMergeCommit`, and dropped in `attributeMergedWork`.
-   * Unlike the pull request's own commit list and `commitsbatch`, the commit
+   * A rebase writes no merge commit: its `lastMergeCommit` is the last of the
+   * pull request's commits, so the same list returns exactly those, and a
+   * `linear` strategy keeps every one under its author. Unlike the pull request's own commit list and `commitsbatch`, the commit
    * list reports change counts.
    */
   private async landedCommits(

@@ -7,6 +7,7 @@ import type {
 } from "../../../domain/entities/code_health_event";
 import {
   attributeMergedWork,
+  COMMIT_LOOKBACK_MS,
   PULL_REQUEST_LOOKBACK_MS,
   type CollectedBuild,
   type CollectedCommit,
@@ -538,7 +539,8 @@ export class GithubCollector implements VcsCollector {
           variables: {
             owner: repository.owner,
             name: repository.name,
-            since: window.from.toISOString(),
+            // A day early, for commits pushed after their date; see `COMMIT_LOOKBACK_MS`.
+            since: new Date(window.from.getTime() - COMMIT_LOOKBACK_MS).toISOString(),
             until: window.to.toISOString(),
             cursor,
           },

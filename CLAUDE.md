@@ -547,13 +547,17 @@ The wire contract, and the pure functions both sides have to agree on.
   Attribution sees one window's facts and the incremental window is minutes long, so a post-merge
   build lands a window after its pull request: the merged pull requests it looks up reach two days
   before the window (`PULL_REQUEST_LOOKBACK_MS`), while the pull request's events, reviews and
-  constituent commits stay with the window it closed in.
+  constituent commits stay with the window it closed in. The branch history is read from a day
+  before the window (`COMMIT_LOOKBACK_MS`), because a commit pushed after its committer date
+  misses its own window; that look-back must stay shorter than the pull request one, or a squash
+  commit read again would lose its pull request and get the completer's stamp back.
 - **The commits a merge commit brought in are fetched from the pull request.** They keep the dates
   they were committed on, so the branch history for the day of the merge never returns them, and
   the day they were committed was fetched before they were on the branch. Dropping the merge
   commit without this would make the work vanish from everybody's row. They are stored under their
-  own dates and deduplicated by identifier against the history; a squash or a rebase needs none of
-  it.
+  own dates and deduplicated by identifier against the history; a squash needs none of it. An
+  Azure DevOps rebase does: it fast-forwards a branch already up to date with the target without
+  rewriting it, so its commits keep their old dates too, and they are kept under their authors.
 - **Azure DevOps reports no parent count on any list endpoint**, so a commit no pull request names
   is recognised as a merge commit by its message — only the forms git writes itself. Its own
   `Merged PR 123:` subject is written on squash commits too and proves nothing; the pull request's

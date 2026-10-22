@@ -54,6 +54,23 @@ export interface MergedPullRequest {
  */
 export const PULL_REQUEST_LOOKBACK_MS = 2 * 24 * 60 * 60 * 1000;
 
+/**
+ * How far before a window the branch history is read.
+ *
+ * Both providers filter the history on the committer date, and a commit
+ * reaches the branch when it is pushed, which can be hours after it was
+ * committed. A window minutes long had already been read by then and nothing
+ * read that date again, so the commit was lost. Reading a day back again is
+ * harmless because the store upserts events by identifier.
+ *
+ * It must stay shorter than {@link PULL_REQUEST_LOOKBACK_MS}. Every commit read
+ * again is stored again, so a squash commit read again has to meet its pull
+ * request in the lookup again — the squash is written at the completion, so its
+ * pull request closed no earlier than the commit's date — or the second read
+ * would put the completer's stamp back on it.
+ */
+export const COMMIT_LOOKBACK_MS = 24 * 60 * 60 * 1000;
+
 /** A commit as the provider reported it, with the one fact attribution needs. */
 export interface CollectedCommit {
   readonly event: CodeHealthEvent;
